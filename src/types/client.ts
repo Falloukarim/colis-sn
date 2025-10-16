@@ -1,3 +1,4 @@
+// src/types/client.ts
 import { Database } from './database.types';
 
 export type Client = Database['public']['Tables']['clients']['Row'];
@@ -19,6 +20,7 @@ export interface ClientFilters {
   created_before?: string;
   has_email?: boolean;
   has_whatsapp?: boolean;
+  has_adresse?: boolean; // ← Ajouté
 }
 
 export interface ClientsResponse {
@@ -34,6 +36,7 @@ export interface ClientFormData {
   telephone: string;
   whatsapp?: string;
   email?: string;
+  adresse?: string; // ← Ajouté
 }
 
 export interface ClientAPIError {
@@ -59,6 +62,7 @@ export interface ClientStats {
   total: number;
   with_email: number;
   with_whatsapp: number;
+  with_adresse: number; // ← Ajouté
   active: number;
   new_this_month: number;
   average_commandes: number;
@@ -66,8 +70,6 @@ export interface ClientStats {
 
 // Helper functions
 export function isClientActive(client: Client): boolean {
-  // Un client est considéré actif s'il a eu au moins une commande dans les 30 derniers jours
-  // Cette logique peut être adaptée selon les besoins métier
   return true; // Implémentation temporaire
 }
 
@@ -81,7 +83,6 @@ export function getClientInitials(client: Client): string {
 }
 
 export function formatClientPhone(phone: string): string {
-  // Formatage basique du numéro de téléphone
   const cleaned = phone.replace(/\D/g, '');
   if (cleaned.length === 10) {
     return cleaned.replace(/(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/, '$1 $2 $3 $4 $5');
@@ -98,4 +99,10 @@ export function validateClientEmail(email?: string): boolean {
 export function validateClientPhone(phone: string): boolean {
   const phoneRegex = /^(\+\d{1,3})?[\s-]?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,9}$/;
   return phoneRegex.test(phone);
+}
+
+// Nouvelle fonction helper pour formater l'adresse
+export function formatClientAdresse(adresse?: string): string {
+  if (!adresse) return 'Aucune adresse renseignée';
+  return adresse.length > 100 ? `${adresse.substring(0, 100)}...` : adresse;
 }

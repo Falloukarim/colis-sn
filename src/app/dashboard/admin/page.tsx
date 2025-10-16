@@ -16,7 +16,7 @@ export default async function AdminPage() {
         <Users className="h-12 w-12 text-red-600 mx-auto" />
         <h2 className="text-2xl font-semibold">Accès refusé</h2>
         <p className="text-gray-600">
-          Cette section est réservée aux super administrateurs.
+          Cette section est réservée pour la maintenance
         </p>
         <Button asChild>
           <Link href="/dashboard">Retour au tableau de bord</Link>

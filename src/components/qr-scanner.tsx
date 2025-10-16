@@ -1,16 +1,18 @@
+// src/components/qr-scanner.tsx
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Check, X, RotateCw, Camera, Scan, CameraOff } from 'lucide-react';
+import { Check, X, RotateCw, Camera } from 'lucide-react';
 import { validateQRCode } from '@/actions/scanner-actions';
 import { useToast } from '@/components/ui/use-toast';
+import { Commande } from '@/types/database.types';
 
 interface QRScannerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onScanSuccess: () => void;
+  onScanSuccess: (commande: Commande) => void;
 }
 
 type Html5QrcodeError = Error & {
@@ -29,6 +31,16 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
   const [isScanning, setIsScanning] = useState(false);
   const [isCaptured, setIsCaptured] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+
+  // Réinitialiser complètement l'état du scanner
+  const resetScannerState = () => {
+    isProcessing.current = false;
+    setScanResult(null);
+    setError(null);
+    setIsScanning(false);
+    setIsCaptured(false);
+    setScanProgress(0);
+  };
 
   // Initialisation du scanner
   const initScanner = async () => {
@@ -51,16 +63,25 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
     try {
       const { Html5Qrcode } = await import('html5-qrcode');
       
+      // S'assurer que l'ancien scanner est bien arrêté
+      if (scannerRef.current) {
+        try {
+          await scannerRef.current.stop();
+        } catch (e) {
+          // Ignorer les erreurs d'arrêt
+        }
+      }
+      
       scannerRef.current = new Html5Qrcode('qr-scanner-container');
       
       await scannerRef.current.start(
         cameraId,
         { 
-          fps: 15,
+          fps: 10,
           qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
             return { 
-              width: Math.min(viewfinderWidth, viewfinderHeight) * 0.7, 
-              height: Math.min(viewfinderWidth, viewfinderHeight) * 0.7 
+              width: Math.min(viewfinderWidth, viewfinderHeight) * 0.8, 
+              height: Math.min(viewfinderWidth, viewfinderHeight) * 0.8 
             };
           },
           aspectRatio: 1.0,
@@ -71,16 +92,16 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
             isProcessing.current = true;
             
             // Animation de capture
-            for (let i = 0; i <= 100; i += 20) {
+            for (let i = 0; i <= 100; i += 25) {
               setScanProgress(i);
-              await new Promise(resolve => setTimeout(resolve, 30));
+              await new Promise(resolve => setTimeout(resolve, 20));
             }
             
             setIsCaptured(true);
             await handleScanSuccess(decodedText);
           }
         },
-        () => {
+        (errorMessage: string) => {
           setScanProgress(0);
         }
       );
@@ -94,15 +115,25 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
     }
   };
 
-  // Arrêter proprement
+  // Arrêter proprement le scanner
   const stopScanner = async () => {
     if (!scannerRef.current) return;
     
     try {
-      await scannerRef.current.stop();
-      await scannerRef.current.clear();
+      const isScannerRunning = scannerRef.current.getState() && 
+        scannerRef.current.getState() === 'SCANNING';
+      
+      if (isScannerRunning) {
+        await scannerRef.current.stop();
+      }
+      
+      // Nettoyer le conteneur
+      const container = document.getElementById('qr-scanner-container');
+      if (container) {
+        container.innerHTML = '';
+      }
     } catch (err) {
-      console.error("Erreur arrêt:", err);
+      console.warn("Avertissement lors de l'arrêt:", err);
     } finally {
       scannerRef.current = null;
       setIsScanning(false);
@@ -111,11 +142,10 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
     }
   };
 
+  // Réinitialiser complètement le scanner
   const resetScanner = async () => {
     await stopScanner();
-    isProcessing.current = false;
-    setScanResult(null);
-    setError(null);
+    resetScannerState();
     
     if (activeCameraId) {
       await startScanner(activeCameraId);
@@ -133,7 +163,7 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
     await resetScanner();
   };
 
-  // Scan réussi
+  // Scan réussi - CORRECTION IMPORTANTE ICI
   const handleScanSuccess = async (decodedText: string) => {
     try {
       setScanResult(decodedText);
@@ -141,74 +171,113 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
       const { success, error, commande } = await validateQRCode(decodedText);
       
       if (success && commande) {
-        toast({
-          title: 'Succès',
-          description: `Commande #${commande.numero_commande} marquée comme remise`,
-        });
+        // Arrêter le scanner et passer la commande au parent
+        await stopScanner();
+        onScanSuccess(commande);
         
-        onScanSuccess();
+        // Réinitialiser l'état pour la prochaine utilisation
+        resetScannerState();
+        
+        // Fermer le dialog
         setTimeout(() => {
           onOpenChange(false);
-        }, 1500);
+        }, 300);
       } else {
+        // CORRECTION : Arrêter le scanner aussi en cas d'erreur
+        await stopScanner();
+        
         toast({
           title: 'Erreur',
           description: error || 'Erreur de validation',
           variant: 'destructive',
         });
-        setTimeout(() => {
-          resetScanner();
-        }, 1000);
+        
+        // Afficher l'erreur et permettre à l'utilisateur de redémarrer manuellement
+        setError(error || 'Erreur de validation');
+        
+        // NE PAS redémarrer automatiquement - laisser l'utilisateur décider
+        // L'utilisateur devra cliquer sur "Redémarrer" pour scanner à nouveau
       }
     } catch (error) {
       console.error("Erreur:", error);
+      
+      // Arrêter le scanner en cas d'erreur générale
+      await stopScanner();
       setError("Échec de la validation");
-      setTimeout(() => {
-        resetScanner();
-      }, 1000);
+      
+      // Afficher le toast d'erreur
+      toast({
+        title: 'Erreur',
+        description: 'Une erreur est survenue lors de la validation',
+        variant: 'destructive',
+      });
+    } finally {
+      // S'assurer que le flag de traitement est réinitialisé
+      isProcessing.current = false;
     }
   };
 
-  // Initialisation
+  // Gérer l'ouverture/fermeture du dialog
+  const handleOpenChange = async (open: boolean) => {
+    if (!open) {
+      // Fermeture : arrêter le scanner et réinitialiser
+      await stopScanner();
+      resetScannerState();
+    } else {
+      // Ouverture : réinitialiser l'état
+      resetScannerState();
+    }
+    
+    onOpenChange(open);
+  };
+
+  // Initialisation quand le dialog s'ouvre
   useEffect(() => {
     let isMounted = true;
+    let scannerInitialized = false;
 
-    const setup = async () => {
-      if (open) {
+    const setupScanner = async () => {
+      if (open && !scannerInitialized) {
         try {
+          scannerInitialized = true;
+          resetScannerState();
+          
           const cameras = await initScanner();
           if (isMounted && cameras.length > 0) {
             const backCamera = cameras.find(cam => 
               cam.label.toLowerCase().includes('back') || 
-              cam.label.toLowerCase().includes('rear')
+              cam.label.toLowerCase().includes('rear') ||
+              cam.label.toLowerCase().includes('arrière')
             ) || cameras[0];
             
             setActiveCameraId(backCamera.id);
             await startScanner(backCamera.id);
           }
         } catch (err) {
-          console.error('Erreur init:', err);
+          console.error('Erreur initialisation scanner:', err);
+          if (isMounted) {
+            setError("Impossible d'accéder à la caméra");
+          }
         }
       }
     };
 
-    setup();
+    if (open) {
+      setupScanner();
+    }
 
     return () => {
       isMounted = false;
       if (!open) {
+        // Nettoyer à la fermeture
         stopScanner();
+        scannerInitialized = false;
       }
     };
   }, [open]);
 
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      onOpenChange(open);
-      if (!open) {
-        stopScanner();
-      }
-    }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle className="text-center">Scanner QR Code</DialogTitle>
@@ -219,16 +288,16 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
           <div className="relative w-full aspect-square rounded-lg overflow-hidden border-2 border-border bg-black">
             <div id="qr-scanner-container" className="w-full h-full" />
 
-            {/* Cadre de guidage minimaliste */}
+            {/* Cadre de guidage */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className={`border-2 ${isCaptured ? 'border-green-500' : 'border-white/50'} rounded-lg w-64 h-64 relative transition-all duration-300`}>
                 
-                {/* Ligne de balayage horizontale discrète */}
+                {/* Ligne de balayage */}
                 <div 
                   className="absolute left-0 right-0 h-0.5 bg-green-400"
                   style={{ 
                     top: `${scanProgress}%`,
-                    opacity: 0.8,
+                    opacity: isScanning ? 0.8 : 0,
                     transition: 'top 0.1s ease'
                   }}
                 />
@@ -244,16 +313,29 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
               </div>
             </div>
 
-            {/* Indicateur de progression */}
-            {scanProgress > 0 && scanProgress < 100 && (
-              <div className="absolute top-3 left-3 bg-black/80 text-white px-2 py-1 rounded text-xs">
-                {scanProgress}%
+            {/* Indicateur de statut */}
+            {!isScanning && !error && open && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div className="text-white text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+                  <p>Initialisation...</p>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div className="text-white text-center p-4">
+                  <X className="h-8 w-8 mx-auto mb-2" />
+                  <p className="text-sm">{error}</p>
+                  <p className="text-xs mt-2">Cliquez sur "Redémarrer" pour réessayer</p>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Boutons de contrôle */}
-          <div className="flex flex-col gap-3">
+          {/* Boutons de contrôl++££££££££££%£££££££££££££££££££££££££££££££%£¨¨¨¨e */}
+          <div className="flex flex-col gap-3">¨£
             <div className="flex gap-3">
               <Button 
                 onClick={resetScanner} 
@@ -263,10 +345,10 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
                 size="sm"
               >
                 <RotateCw className={`h-4 w-4 ${isProcessing.current ? 'animate-spin' : ''}`} />
-                Redémarrer
+                {error ? 'Réessayer' : 'Redémarrer'}
               </Button>
 
-              {availableCameras.length > 1 && (
+              {availableCameras.length > 1 && isScanning && (
                 <Button 
                   onClick={switchCamera} 
                   variant="outline" 
@@ -282,22 +364,19 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
 
             {/* Instructions */}
             <p className="text-center text-sm text-muted-foreground">
-              Centrez le QR code dans le cadre pour scanner
+              {error 
+                ? "Une erreur s'est produite. Cliquez sur 'Réessayer' pour scanner à nouveau."
+                : isScanning 
+                  ? "Centrez le QR code dans le cadre pour scanner" 
+                  : "Initialisation du scanner..."}
             </p>
           </div>
 
           {/* Messages d'état */}
-          {error && (
-            <div className="p-3 bg-destructive/10 text-destructive rounded-lg text-sm flex items-center gap-2">
-              <X className="h-4 w-4" />
-              {error}
-            </div>
-          )}
-
           {scanResult && !error && (
             <div className="p-3 bg-green-50 text-green-700 rounded-lg text-sm flex items-center gap-2">
               <Check className="h-4 w-4" />
-              QR code détecté
+              QR code détecté - Traitement en cours...
             </div>
           )}
         </div>

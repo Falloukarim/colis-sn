@@ -1,27 +1,16 @@
+// commandes-table.tsx (version améliorée)
 'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Eye, Edit, Trash2, Package, Copy } from 'lucide-react';
+import { Eye, Edit, Package, Copy, Calendar, User, Scale, DollarSign, Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Commande } from '@/types/database.types';
-import { useElegantToast } from '@/hooks/use-elegant-toast'; // hook de toast moderne
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Commande } from '@/types/commande';
+import { useToast } from '@/components/ui/use-toast';
+import { getStatutDisplayName, getStatutColor, calculateMontantTotal } from '@/types/commande';
 
 interface CommandesTableProps {
   commandes: Commande[];
@@ -29,195 +18,229 @@ interface CommandesTableProps {
 
 export default function CommandesTable({ commandes }: CommandesTableProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const toast = useElegantToast();
+  const { toast } = useToast();
 
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Copié', 'Numéro de commande copié dans le presse-papier');
+      toast({
+        title: '✅ Copié',
+        description: 'Numéro de commande copié dans le presse-papier',
+      });
     } catch {
-      toast.error('Erreur', 'Impossible de copier le numéro de commande');
+      toast({
+        title: '❌ Erreur',
+        description: 'Impossible de copier le numéro de commande',
+        variant: 'destructive',
+      });
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'en_cours':
-        return <Badge variant="secondary">En cours</Badge>;
-      case 'disponible':
-        return <Badge variant="default">Disponible</Badge>;
-      case 'remis':
-        return <Badge variant="outline">Remis</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
-
-  const formatDate = (dateString: string | null) => {
+  const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('fr-FR');
   };
 
   if (commandes.length === 0) {
     return (
-      <div className="p-8 text-center text-gray-500">
-        <Package className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <p>Aucune commande trouvée</p>
+      <div className="text-center py-16 px-4">
+        <div className="max-w-md mx-auto">
+          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+            <Package className="h-8 w-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune commande trouvée</h3>
+          <p className="text-gray-500 mb-6">
+            Commencez par créer votre première commande pour vos clients.
+          </p>
+          <Link href="/dashboard/commandes/create">
+            <Button className="bg-gradient-to-r from-purple-600 to-purple-700">
+              Créer une commande
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
   return (
-    <>
-      {/* Desktop */}
-      <div className="hidden md:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>N° Commande</TableHead>
-              <TableHead>Client</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Poids (kg)</TableHead>
-              <TableHead>Prix (XOF/kg)</TableHead>
-              <TableHead>Total (XOF)</TableHead>
-              <TableHead>Date réception</TableHead>
-              <TableHead>Date livraison</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {commandes.map((commande) => (
-              <TableRow key={commande.id}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm bg-blue-50 px-2 py-1 rounded">
+    <div className="space-y-4 p-6">
+      {commandes.map((commande) => (
+        <Card key={commande.id} className="group hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-purple-100 overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg">
+                  <Hash className="h-4 w-4 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <span className="font-mono bg-purple-50 px-2 py-1 rounded text-purple-700">
                       {commande.numero_commande}
                     </span>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      onClick={() => copyToClipboard(commande.numero_commande)}
+                      onClick={() => copyToClipboard(commande.numero_commande || '')}
                     >
                       <Copy className="h-3 w-3" />
                     </Button>
-                  </div>
-                </TableCell>
-                <TableCell>{(commande as any).client_nom || 'Client inconnu'}</TableCell>
-                <TableCell className="max-w-[200px] truncate">
-                  {(commande as any).description || '-'}
-                </TableCell>
-                <TableCell>{getStatusBadge(commande.statut)}</TableCell>
-                <TableCell>{commande.poids || '-'}</TableCell>
-                <TableCell>{commande.prix_kg ? `${commande.prix_kg} XOF` : '-'}</TableCell>
-                <TableCell>
-                  {commande.poids && commande.prix_kg
-                    ? `${(commande.poids * commande.prix_kg).toFixed(2)} XOF`
-                    : '-'}
-                </TableCell>
-                <TableCell>{formatDate(commande.date_reception)}</TableCell>
-                <TableCell>{formatDate(commande.date_livraison_prevue)}</TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        Actions
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 p-1"
-                    >
-                      <DropdownMenuItem asChild>
-                        <Link
-                          href={`/dashboard/commandes/${commande.id}`}
-                          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-blue-50 dark:hover:bg-blue-900"
-                        >
-                          <Eye className="h-5 w-5 text-blue-600" />
-                          Détails
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link
-                          href={`/dashboard/commandes/${commande.id}/edit`}
-                          className="flex items-center gap-2 px-3 py-2 rounded hover:bg-green-50 dark:hover:bg-green-900"
-                        >
-                          <Edit className="h-5 w-5 text-green-600" />
-                          Modifier
-                        </Link>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Mobile */}
-      <div className="space-y-4 md:hidden">
-        {commandes.map((commande) => (
-          <Card key={commande.id} className="shadow-md">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-sm">
-                <span className="font-mono bg-blue-50 px-2 py-1 rounded">
-                  {commande.numero_commande}
-                </span>
-                {getStatusBadge(commande.statut)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p>
-                <strong>Client :</strong> {(commande as any).client_nom || 'Client inconnu'}
-              </p>
-              <p>
-                <strong>Description :</strong> {(commande as any).description || '-'}
-              </p>
-              <p>
-                <strong>Poids :</strong> {commande.poids || '-'} kg
-              </p>
-              <p>
-                <strong>Prix :</strong> {commande.prix_kg ? `${commande.prix_kg} XOF/kg` : '-'}
-              </p>
-              <p>
-                <strong>Total :</strong>{' '}
-                {commande.poids && commande.prix_kg
-                  ? ` ${(commande.poids * commande.prix_kg).toFixed(2)} XOF`
-                  : '-'}
-              </p>
-              <p>
-                <strong>Réception :</strong> {formatDate(commande.date_reception)}
-              </p>
-              <p>
-                <strong>Livraison prévue :</strong> {formatDate(commande.date_livraison_prevue)}
-              </p>
-
-              <div className="flex gap-2 pt-2">
-                <Link href={`/dashboard/commandes/${commande.id}`}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="flex items-center gap-1 hover:bg-blue-50 dark:hover:bg-blue-900"
-                  >
-                    <Eye className="h-4 w-4 text-blue-600" /> Détails
-                  </Button>
-                </Link>
-                <Link href={`/dashboard/commandes/${commande.id}/edit`}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="flex items-center gap-1 hover:bg-green-50 dark:hover:bg-green-900"
-                  >
-                    <Edit className="h-4 w-4 text-green-600" /> Modifier
-                  </Button>
-                </Link>
+                  </CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Créée le {formatDate(commande.created_at)}
+                  </p>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </>
+              
+              <Badge 
+                className={`${getStatutColor(commande.statut as any)} px-3 py-1 rounded-full font-medium`}
+              >
+                {getStatutDisplayName(commande.statut as any)}
+              </Badge>
+            </div>
+          </CardHeader>
+          
+          <CardContent className="space-y-4">
+            {/* Informations client */}
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+              <div className="p-2 bg-blue-100 rounded-md">
+                <User className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-blue-900">
+                  {(commande as any).client_nom || 'Client inconnu'}
+                </p>
+                <p className="text-xs text-blue-600">Client</p>
+              </div>
+            </div>
+
+            {/* Grille d'informations */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Poids */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="p-2 bg-gray-100 rounded-md">
+                  <Scale className="h-4 w-4 text-gray-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{commande.poids || '-'} kg</p>
+                  <p className="text-xs text-gray-600">Poids</p>
+                </div>
+              </div>
+
+              {/* Prix au kg */}
+              <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+                <div className="p-2 bg-green-100 rounded-md">
+                  <DollarSign className="h-4 w-4 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{commande.prix_kg ? `${commande.prix_kg} XOF/kg` : '-'}</p>
+                  <p className="text-xs text-green-600">Prix au kg</p>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
+                <div className="p-2 bg-purple-100 rounded-md">
+                  <DollarSign className="h-4 w-4 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">
+                    {commande.poids && commande.prix_kg 
+                      ? `${calculateMontantTotal(commande)} XOF` 
+                      : '-'}
+                  </p>
+                  <p className="text-xs text-purple-600">Montant total</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg">
+                <div className="p-2 bg-orange-100 rounded-md">
+                  <Calendar className="h-4 w-4 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{formatDate(commande.date_reception)}</p>
+                  <p className="text-xs text-orange-600">Date réception</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg">
+                <div className="p-2 bg-indigo-100 rounded-md">
+                  <Calendar className="h-4 w-4 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{formatDate(commande.date_livraison_prevue)}</p>
+                  <p className="text-xs text-indigo-600">Livraison prévue</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <Link href={`/dashboard/commandes/${commande.id}`} className="flex-1">
+                <Button 
+                  variant="outline" 
+                  className="w-full gap-2 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                  disabled={loadingId === commande.id}
+                >
+                  <Eye className="h-4 w-4" />
+                  Détails
+                </Button>
+              </Link>
+              
+              <Link href={`/dashboard/commandes/${commande.id}/edit`} className="flex-1">
+                <Button 
+                  variant="outline" 
+                  className="w-full gap-2 hover:bg-green-50 hover:text-green-600 transition-colors"
+                  disabled={loadingId === commande.id}
+                >
+                  <Edit className="h-4 w-4" />
+                  Modifier
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// Composant de chargement
+export function CommandesTableSkeleton() {
+  return (
+    <div className="space-y-4 p-6">
+      {[...Array(6)].map((_, i) => (
+        <Card key={i} className="border-gray-100">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-start">
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-5 w-16" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-12 w-full" />
+            <div className="grid grid-cols-3 gap-4">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-12" />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Skeleton className="h-8 flex-1" />
+              <Skeleton className="h-8 flex-1" />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }

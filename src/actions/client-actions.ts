@@ -1,3 +1,4 @@
+// src/actions/client-actions.ts
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -73,6 +74,7 @@ export async function createClient(formData: FormData): Promise<{ success: boole
       telephone: formData.get('telephone') as string,
       whatsapp: formData.get('whatsapp') as string || null,
       email: formData.get('email') as string || null,
+      adresse: formData.get('adresse') as string || null, // ← Ajouté
     };
 
     const { error } = await supabase
@@ -99,12 +101,9 @@ export async function getClients(): Promise<{ clients: Client[]; error?: string 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non autorisé');
 
-    // Utilisez directement les metadata au lieu de requêter la table users
     let organizationId = user.user_metadata?.organization_id;
     
     if (!organizationId) {
-      // Fallback: essayez de récupérer depuis la table users si vraiment nécessaire
-      // mais cela pourrait causer la récursion
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('organization_id')
@@ -139,7 +138,6 @@ export async function getClientById(clientId: string): Promise<{ client: Client 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non autorisé');
 
-    // Récupérer l'organization_id depuis la table users
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('organization_id')
@@ -172,7 +170,6 @@ export async function updateClient(clientId: string, formData: FormData): Promis
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non autorisé');
 
-    // Récupérer l'organization_id depuis la table users
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('organization_id')
@@ -187,6 +184,7 @@ export async function updateClient(clientId: string, formData: FormData): Promis
       telephone: formData.get('telephone') as string,
       whatsapp: formData.get('whatsapp') as string || null,
       email: formData.get('email') as string || null,
+      adresse: formData.get('adresse') as string || null, // ← Ajouté
     };
 
     const { error } = await supabase
@@ -213,7 +211,6 @@ export async function deleteClient(clientId: string): Promise<{ success: boolean
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non autorisé');
 
-    // Récupérer l'organization_id depuis la table users
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('organization_id')
@@ -237,5 +234,61 @@ export async function deleteClient(clientId: string): Promise<{ success: boolean
     console.error('Error deleting client:', error);
     const errorDetails = handleSupabaseError(error);
     return { success: false, error: errorDetails.message };
+  }
+}
+
+// Nouvelle fonction pour obtenir les statistiques avec adresse
+export async function getClientsStats(): Promise<{ 
+  total: number; 
+  with_email: number; 
+  with_whatsapp: number; 
+  with_adresse: number;
+  error?: string 
+}> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Non autorisé');
+
+    let organizationId = user.user_metadata?.organization_id;
+    
+    if (!organizationId) {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single();
+
+      if (userError) throw userError;
+      if (!userData) throw new Error('Utilisateur non trouvé');
+      
+      organizationId = userData.organization_id;
+    }
+
+    const { data: clients, error } = await supabase
+      .from('clients')
+      .select('email, whatsapp, adresse')
+      .eq('organization_id', organizationId);
+
+    if (error) throw error;
+
+    const stats = {
+      total: clients?.length || 0,
+      with_email: clients?.filter(client => client.email).length || 0,
+      with_whatsapp: clients?.filter(client => client.whatsapp).length || 0,
+      with_adresse: clients?.filter(client => client.adresse).length || 0, // ← Ajouté
+    };
+
+    return stats;
+  } catch (error) {
+    console.error('Error fetching clients stats:', error);
+    const errorDetails = handleSupabaseError(error);
+    return { 
+      total: 0, 
+      with_email: 0, 
+      with_whatsapp: 0, 
+      with_adresse: 0,
+      error: errorDetails.message 
+    };
   }
 }

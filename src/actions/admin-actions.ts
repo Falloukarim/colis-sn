@@ -59,7 +59,7 @@ export async function getOrganizations(): Promise<{ organizations: any[]; error?
 
     // Vérification du rôle superadmin
     if (userData.role !== 'superadmin') {
-      throw new Error('Accès réservé aux super administrateurs');
+      throw new Error('Accès maintenance');
     }
 
     const { data: organizations, error } = await supabase
@@ -150,7 +150,7 @@ export async function getSubscriptionStats(): Promise<{ stats: any; error?: stri
 
     // Vérification du rôle superadmin
     if (userData.role !== 'superadmin') {
-      throw new Error('Accès réservé aux super administrateurs');
+      throw new Error('Accès maintenance');
     }
 
     // Récupérer les statistiques des abonnements

@@ -87,7 +87,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       adminOnly: true
     },
     {
-      name: 'Admin',
+      name: 'Acces maintenance',
       href: '/dashboard/admin',
       icon: Shield,
       current: pathname.startsWith('/dashboard/admin'),
@@ -101,7 +101,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       children: [
         { 
           name: 'Profil', 
-          href: '/dashboard/settings/profile',
+          href: '/dashboard/profil',
           icon: User
         },
         { 
@@ -167,131 +167,150 @@ export default function Sidebar({ onClose }: SidebarProps) {
       )}
       
       {/* Sidebar */}
-      <div className={cn(
-        "bg-gray-900 text-white flex flex-col h-full transition-all duration-300 relative z-50",
-        collapsed ? 'w-16' : 'w-64',
-        "md:relative fixed left-0 top-0 transform transition-transform duration-300",
-        isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-      )}>
-        <div className="flex items-center justify-between p-4">
-          {!collapsed && (
-            <h1 className="text-xl font-bold text-white">ColisManager</h1>
-          )}
-          
-          <div className="flex items-center gap-2">
-            {/* Bouton pour fermer sur mobile */}
-            {onClose && (
+      <div
+  className={cn(
+    "flex flex-col h-full transition-all duration-300 relative z-50",
+    collapsed ? "w-16" : "w-64",
+    "bg-gradient-to-b from-gray-950 via-gray-900 to-gray-800 text-white shadow-2xl",
+    "md:relative fixed left-0 top-0 transform transition-transform duration-300",
+    isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+  )}
+>
+  {/* Header */}
+  <div className="flex items-center justify-between p-4 border-b border-white/10">
+    {!collapsed && (
+      <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+        Colis-sn
+      </h1>
+    )}
+    <div className="flex items-center gap-2">
+      {/* Fermer mobile */}
+      {onClose && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="text-gray-300 hover:bg-gray-800 md:hidden"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+      {/* Collapse desktop */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setCollapsed(!collapsed)}
+        className="text-gray-300 hover:bg-gray-800 hidden md:flex"
+      >
+        {collapsed ? (
+          <ChevronRight className="h-4 w-4" />
+        ) : (
+          <ChevronLeft className="h-4 w-4" />
+        )}
+      </Button>
+    </div>
+  </div>
+
+  {/* Navigation */}
+  <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+    {navigation.map((item) => {
+      const isItemSubmenuOpen = isSubmenuOpen(item.name);
+
+      return (
+        <div key={item.name}>
+          {/* Item principal */}
+          <div className="flex items-center">
+            <Link
+              href={item.href}
+              className={cn(
+                "flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 group flex-1",
+                item.current
+                  ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+                  : "text-gray-300 hover:bg-gray-800 hover:text-white"
+              )}
+              title={collapsed ? item.name : undefined}
+              onClick={handleItemClick}
+            >
+              <item.icon className="h-5 w-5 flex-shrink-0" />
+              {!collapsed && (
+                <span className="ml-3 group-hover:translate-x-1 transition-transform">
+                  {item.name}
+                </span>
+              )}
+            </Link>
+
+            {/* Flèche pour les sous-menus */}
+            {!collapsed && item.children && (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onClose}
-                className="text-white hover:bg-gray-800 md:hidden"
+                className="h-8 w-8 text-gray-400 hover:text-white min-w-8"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleSubmenu(item.name);
+                }}
               >
-                <X className="h-4 w-4" />
+                {isItemSubmenuOpen ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
               </Button>
             )}
-
-            {/* Bouton collapse/expand (seulement sur desktop) */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setCollapsed(!collapsed)}
-              className="text-white hover:bg-gray-800 hidden md:flex"
-            >
-              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </Button>
           </div>
-        </div>
 
-        <nav className="flex-1 space-y-1 p-4">
-          {navigation.map((item) => {
-            const isItemSubmenuOpen = isSubmenuOpen(item.name);
-            
-            return (
-              <div key={item.name}>
-                {/* Item principal */}
-                <div className="flex items-center">
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors group flex-1",
-                      item.current
-                        ? 'bg-gray-800 text-white'
-                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                    )}
-                    title={collapsed ? item.name : undefined}
-                    onClick={handleItemClick}
-                  >
-                    <item.icon className="h-5 w-5 flex-shrink-0" />
-                    {!collapsed && <span className="ml-3">{item.name}</span>}
-                  </Link>
-
-                  {/* Flèche pour les items avec sous-menu */}
-                  {!collapsed && item.children && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-gray-400 hover:text-white min-w-8"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleSubmenu(item.name);
-                      }}
-                    >
-                      {isItemSubmenuOpen ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-
-                {/* Sous-menu */}
-                {!collapsed && item.children && isItemSubmenuOpen && (
-                  <div className="ml-8 mt-1 space-y-1">
-                    {item.children.map((child) => {
-                      const ChildIcon = child.icon;
-                      return (
-                        <Link
-                          key={child.name}
-                          href={child.href}
-                          className={cn(
-                            "flex items-center px-3 py-2 text-sm rounded-md transition-colors",
-                            pathname === child.href
-                              ? "bg-gray-700 text-white"
-                              : "text-gray-400 hover:bg-gray-700 hover:text-white"
-                          )}
-                          onClick={handleSubmenuItemClick}
-                        >
-                          {ChildIcon && (
-                            <ChildIcon className="h-4 w-4 mr-3 flex-shrink-0" />
-                          )}
-                          {child.name}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-gray-700">
-          <form action={handleSignOut}>
-            <Button
-              type="submit"
-              variant="ghost"
-              className="w-full justify-start text-gray-300 hover:bg-gray-800 hover:text-white group"
-              title={collapsed ? "Déconnexion" : undefined}
+          {/* Sous-menu */}
+          {!collapsed && item.children && (
+            <div
+              className={cn(
+                "ml-8 mt-1 space-y-1 transition-all duration-300 overflow-hidden",
+                isItemSubmenuOpen ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
+              )}
             >
-              <LogOut className="h-5 w-5" />
-              {!collapsed && <span className="ml-3">Déconnexion</span>}
-            </Button>
-          </form>
+              {item.children.map((child) => {
+                const ChildIcon = child.icon;
+                return (
+                  <Link
+                    key={child.name}
+                    href={child.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm rounded-md transition-all duration-200",
+                      pathname === child.href
+                        ? "bg-gray-700 text-white"
+                        : "text-gray-400 hover:bg-gray-700 hover:text-white"
+                    )}
+                    onClick={handleSubmenuItemClick}
+                  >
+                    {ChildIcon && (
+                      <ChildIcon className="h-4 w-4 mr-3 flex-shrink-0" />
+                    )}
+                    {child.name}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
-      </div>
+      );
+    })}
+  </nav>
+
+  {/* Footer */}
+  <div className="p-4 border-t border-white/10">
+    <form action={handleSignOut}>
+      <Button
+        type="submit"
+        variant="ghost"
+        className="w-full justify-start text-gray-300 hover:bg-gray-800 hover:text-white group"
+        title={collapsed ? "Déconnexion" : undefined}
+      >
+        <LogOut className="h-5 w-5" />
+        {!collapsed && <span className="ml-3">Déconnexion</span>}
+      </Button>
+    </form>
+  </div>
+</div>
     </>
   );
 }

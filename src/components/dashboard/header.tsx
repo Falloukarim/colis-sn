@@ -1,3 +1,4 @@
+// src/components/header.tsx
 'use client';
 
 import { Bell, User, QrCode, Settings, Menu } from 'lucide-react';
@@ -13,9 +14,12 @@ import {
 import { signOut } from '@/actions/auth-actions';
 import { useToast } from '@/components/ui/use-toast';
 import QRScanner from '@/components/qr-scanner';
+import ConfirmationRemise from '@/components/confirmation-remise';
 import Link from 'next/link';
 import { useMobileSidebar } from '@/components/providers/mobile-sidebar-provider';
 import { useState } from 'react';
+import { Commande, Client } from '@/types/database.types';
+import { getClientById } from '@/actions/client-actions';
 
 interface HeaderProps {
   organizationName?: string;
@@ -24,14 +28,47 @@ interface HeaderProps {
 
 export default function Header({ organizationName, subscriptionStatus }: HeaderProps) {
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [selectedCommande, setSelectedCommande] = useState<Commande | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  
   const { toast } = useToast();
   const { openSidebar } = useMobileSidebar();
 
-  const handleScanSuccess = () => {
+  const handleScanSuccess = async (commande: Commande) => {
+    try {
+      // Récupérer les informations du client
+      const { client, error } = await getClientById(commande.client_id);
+      
+      if (error || !client) {
+        toast({
+          title: 'Erreur',
+          description: 'Impossible de récupérer les informations du client',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setSelectedCommande(commande);
+      setSelectedClient(client);
+      setShowConfirmation(true);
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: 'Une erreur est survenue',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleConfirmationSuccess = () => {
+    setShowConfirmation(false);
+    setSelectedCommande(null);
+    setSelectedClient(null);
+    
     toast({
       title: 'Succès',
-      description: 'Commande marquée comme remise',
-      variant: 'default',
+      description: 'La commande a été marquée comme remise',
     });
   };
 
@@ -130,6 +167,20 @@ export default function Header({ organizationName, subscriptionStatus }: HeaderP
         onOpenChange={setScannerOpen}
         onScanSuccess={handleScanSuccess}
       />
+
+      {/* Confirmation Modal */}
+      {showConfirmation && selectedCommande && selectedClient && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <ConfirmationRemise
+              commande={selectedCommande}
+              client={selectedClient}
+              onBack={() => setShowConfirmation(false)}
+              onSuccess={handleConfirmationSuccess}
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }

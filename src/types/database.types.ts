@@ -39,6 +39,7 @@ export interface Client {
   telephone: string;
   whatsapp: string | null;
   email: string | null;
+  adresse: string | null; 
   created_at: string;
 }
 

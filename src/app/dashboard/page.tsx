@@ -66,7 +66,6 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-4 md:gap-6 w-full">
       {/* Header avec actions rapides */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Tableau de bord</h1>
         
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">

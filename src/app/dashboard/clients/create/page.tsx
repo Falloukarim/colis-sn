@@ -7,11 +7,12 @@ import { createClient } from '@/actions/client-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useElegantToast } from '@/hooks/use-elegant-toast'; // ← Ajouté
+import { Textarea } from '@/components/ui/textarea'; // ← Ajouté pour l'adresse
+import { useElegantToast } from '@/hooks/use-elegant-toast';
 
 export default function CreateClientPage() {
   const router = useRouter();
-  const showToast = useElegantToast(); // ← Modifié
+  const showToast = useElegantToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -22,11 +23,11 @@ export default function CreateClientPage() {
     const result = await createClient(formData);
 
     if (result.success) {
-      showToast.success('Succès', 'Client créé avec succès'); // ← Modifié
-      router.push('/clients');
+      showToast.success('Succès', 'Client créé avec succès');
+      router.push('/dashboard/clients');
     } else {
       setError(result.error || 'Une erreur est survenue');
-      showToast.error('Erreur', result.error || 'Une erreur est survenue'); // ← Ajouté
+      showToast.error('Erreur', result.error || 'Une erreur est survenue');
     }
 
     setLoading(false);
@@ -89,6 +90,17 @@ export default function CreateClientPage() {
               placeholder="jean.dupont@email.com"
             />
           </div>
+        </div>
+
+        {/* Nouvelle section pour l'adresse */}
+        <div className="space-y-2">
+          <Label htmlFor="adresse">Adresse</Label>
+          <Textarea
+            id="adresse"
+            name="adresse"
+            placeholder="123 Avenue des Champs-Élysées, 75008 Paris, France"
+            rows={3}
+          />
         </div>
 
         <div className="flex gap-4 pt-4">

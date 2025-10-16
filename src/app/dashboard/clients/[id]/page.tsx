@@ -1,144 +1,147 @@
-import { notFound } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, Mail, Phone, MessageSquare } from 'lucide-react';
-import { getClientById } from '@/actions/client-actions';
-import { getCommandes } from '@/actions/commande-actions';
+// src/app/dashboard/clients/[id]/page.tsx (exemple simplifié)
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Mail, Phone, MessageSquare, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getClientById } from '@/actions/client-actions';
+import { Client } from '@/types/database.types';
 
-interface ClientPageProps {
-  params: {
-    id: string;
-  };
-}
+export default function ClientDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+  const [client, setClient] = useState<Client | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-export default async function ClientPage({ params }: ClientPageProps) {
-  const { client, error } = await getClientById(params.id);
+  const clientId = params.id as string;
 
-  if (error || !client) {
-    notFound();
+  useEffect(() => {
+    async function fetchClient() {
+      try {
+        const { client: clientData, error } = await getClientById(clientId);
+        if (error) {
+          setError(error);
+          return;
+        }
+        setClient(clientData);
+      } catch (err) {
+        setError('Erreur lors du chargement du client');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (clientId) {
+      fetchClient();
+    }
+  }, [clientId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-gray-600">Chargement...</div>
+      </div>
+    );
   }
 
-  const { commandes } = await getCommandes();
-  const clientCommandes = commandes.filter(commande => commande.client_id === params.id);
+  if (error || !client) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 text-lg">{error || 'Client non trouvé'}</div>
+          <Button onClick={() => router.push('/dashboard/clients')} className="mt-4">
+            Retour à la liste
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href="/clients">
-          <Button variant="outline" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <h1 className="text-3xl font-bold">Détails du client</h1>
+        <Button variant="outline" size="icon" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="text-3xl font-bold">{client.nom}</h1>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Informations personnelles</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold">{client.nom}</h3>
-            </div>
-            
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Phone className="h-4 w-4" />
-              <span>{client.telephone}</span>
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Phone className="h-5 w-5 text-gray-400" />
+              <div>
+                <div className="text-sm text-gray-500">Téléphone</div>
+                <div className="font-medium">{client.telephone}</div>
+              </div>
             </div>
 
             {client.whatsapp && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <MessageSquare className="h-4 w-4" />
-                <span>WhatsApp: {client.whatsapp}</span>
+              <div className="flex items-center gap-3">
+                <MessageSquare className="h-5 w-5 text-green-400" />
+                <div>
+                  <div className="text-sm text-gray-500">WhatsApp</div>
+                  <div className="font-medium">{client.whatsapp}</div>
+                </div>
               </div>
             )}
 
             {client.email && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Mail className="h-4 w-4" />
-                <span>{client.email}</span>
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-blue-400" />
+                <div>
+                  <div className="text-sm text-gray-500">Email</div>
+                  <div className="font-medium">{client.email}</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            {client.adresse && (
+              <div className="flex items-start gap-3">
+                <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div>
+                  <div className="text-sm text-gray-500">Adresse</div>
+                  <div className="font-medium whitespace-pre-line">{client.adresse}</div>
+                </div>
               </div>
             )}
 
-            <div className="text-sm text-gray-500">
-              Client depuis le {new Date(client.created_at).toLocaleDateString('fr-FR')}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Statistiques</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Total des commandes:</span>
-              <span className="font-semibold">{clientCommandes.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">En cours:</span>
-              <span className="font-semibold text-yellow-600">
-                {clientCommandes.filter(c => c.statut === 'en_cours').length}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Disponibles:</span>
-              <span className="font-semibold text-green-600">
-                {clientCommandes.filter(c => c.statut === 'disponible').length}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Remises:</span>
-              <span className="font-semibold text-blue-600">
-                {clientCommandes.filter(c => c.statut === 'remis').length}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Historique des commandes</span>
-            <Link href={`/commandes/create?client_id=${client.id}`}>
-              <Button>Nouvelle commande</Button>
-            </Link>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {clientCommandes.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">Aucune commande pour ce client</p>
-          ) : (
-            <div className="space-y-4">
-              {clientCommandes.map((commande) => (
-                <div key={commande.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <p className="font-semibold">Commande #{commande.id.slice(0, 8)}</p>
-                    <p className="text-sm text-gray-600">
-                      Statut: <span className={`font-medium ${
-                        commande.statut === 'en_cours' ? 'text-yellow-600' :
-                        commande.statut === 'disponible' ? 'text-green-600' :
-                        'text-blue-600'
-                      }`}>
-                        {commande.statut}
-                      </span>
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Créée le {new Date(commande.created_at).toLocaleDateString('fr-FR')}
-                    </p>
-                  </div>
-                  <Link href={`/commandes/${commande.id}`}>
-                    <Button variant="outline">Voir détails</Button>
-                  </Link>
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 flex items-center justify-center">
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm text-gray-500">Date d'ajout</div>
+                <div className="font-medium">
+                  {new Date(client.created_at).toLocaleDateString('fr-FR')}
                 </div>
-              ))}
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+
+        <div className="flex gap-4 mt-8 pt-6 border-t">
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/dashboard/clients/${clientId}/edit`)}
+          >
+            Modifier le client
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/dashboard/clients')}
+          >
+            Retour à la liste
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import * as React from 'react'; // pour React.useActionState
+import * as React from 'react';
 import { acceptInvitation, InvitationState } from '@/actions/invitation-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,11 +13,11 @@ const initialState: InvitationState = {
   success: false,
 };
 
-export default function AcceptInvitationPage() {
+// Créez un composant interne qui utilise useSearchParams
+function AcceptInvitationContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
   
-  // Remplace useFormState par useActionState
   const [state, formAction] = React.useActionState(
     acceptInvitation.bind(null, token!), 
     initialState
@@ -119,5 +119,25 @@ export default function AcceptInvitationPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// Composant principal avec Suspense
+export default function AcceptInvitationPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Chargement...</CardTitle>
+            <CardDescription>
+              Vérification de votre invitation...
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    }>
+      <AcceptInvitationContent />
+    </Suspense>
   );
 }
