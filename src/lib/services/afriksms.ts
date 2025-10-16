@@ -158,40 +158,51 @@ export class AfrikSMSService {
   /**
    * Formater le numéro de téléphone selon la documentation
    */
-  private formatPhoneNumber(phone: string): string | null {
-    const cleaned = phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
-    
-    console.log('📞 Formatage numéro:', { original: phone, cleaned });
+private formatPhoneNumber(phone: string): string | null {
+  const cleaned = phone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+  
+  console.log('📞 Formatage numéro:', { original: phone, cleaned });
 
-    // ✅ Format EXACT selon la documentation: "221701234567" (sans + ou 00)
-    if (cleaned.startsWith('+')) {
-      return cleaned.substring(1); // Retirer le +
-    }
-    
-    if (cleaned.startsWith('00')) {
-      return cleaned.substring(2); // Retirer le 00
-    }
-    
-    if (cleaned.startsWith('0')) {
-      return '221' + cleaned.substring(1); // Remplacer 0 par 221
-    }
-    
-    if (cleaned.startsWith('77') && cleaned.length === 9) {
-      return '221' + cleaned; // Ajouter l'indicatif Sénégal
-    }
-    
-    if (cleaned.startsWith('221') && cleaned.length === 12) {
-      return cleaned; // Déjà au bon format
-    }
-    
-    // Numéro déjà au format international sans +
-    if (cleaned.length >= 9 && cleaned.length <= 15) {
-      return cleaned;
-    }
-    
-    console.log('❌ Numéro invalide:', cleaned);
-    return null;
+  // ✅ Format EXACT selon la documentation: "221701234567" (sans + ou 00)
+  
+  // Si commence par +, retirer le +
+  if (cleaned.startsWith('+')) {
+    return cleaned.substring(1);
   }
+  
+  // Si commence par 00, retirer le 00
+  if (cleaned.startsWith('00')) {
+    return cleaned.substring(2);
+  }
+  
+  // Si commence par 0 et a 9 ou 10 chiffres → Sénégal (221)
+  if (cleaned.startsWith('0') && (cleaned.length === 10 || cleaned.length === 9)) {
+    return '221' + cleaned.substring(1);
+  }
+  
+  // Si commence par 77/78/76/70 et a 9 chiffres → Sénégal (221)
+  if ((cleaned.startsWith('77') || cleaned.startsWith('78') || cleaned.startsWith('76') || cleaned.startsWith('70')) && cleaned.length === 9) {
+    return '221' + cleaned;
+  }
+  
+  // Si déjà au format 221 et 12 chiffres → bon format
+  if (cleaned.startsWith('221') && cleaned.length === 12) {
+    return cleaned;
+  }
+  
+  // Si numéro international sans + (ex: 221783849885)
+  if (cleaned.length === 12 && cleaned.startsWith('221')) {
+    return cleaned;
+  }
+  
+  // Si c'est juste 9 chiffres (783849885) → probablement Sénégal
+  if (cleaned.length === 9 && /^[5678]/.test(cleaned)) {
+    return '221' + cleaned;
+  }
+  
+  console.log('❌ Numéro invalide pour AfrikSMS:', cleaned);
+  return null;
+}
 
   /**
    * Vérifier le solde de crédits
