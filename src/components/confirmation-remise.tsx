@@ -174,7 +174,7 @@ export default function ConfirmationRemise({
                   <DollarSign className="h-4 w-4 text-gray-400" />
                   <div>
                     <div className="text-sm text-gray-500">Prix/kg</div>
-                    <div className="font-medium">{commande.prix_kg} €</div>
+                    <div className="font-medium">{commande.prix_kg} cfa</div>
                   </div>
                 </div>
               )}
@@ -184,7 +184,7 @@ export default function ConfirmationRemise({
                   <DollarSign className="h-4 w-4 text-gray-400" />
                   <div>
                     <div className="text-sm text-gray-500">Total</div>
-                    <div className="font-medium">{commande.montant_total} €</div>
+                    <div className="font-medium">{commande.montant_total} cfa</div>
                   </div>
                 </div>
               )}
