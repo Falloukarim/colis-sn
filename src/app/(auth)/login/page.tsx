@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, Building } from 'lucide-react';
 import { signIn } from '@/actions/auth-actions';
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -22,12 +20,12 @@ export default function LoginPage() {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
 
-    try {
-      await signIn(email, password);
-      // Redirection gérée par le middleware après la connexion réussie
+    const result = await signIn(email, password);
+
+    if (!result.success) {
+      setError(result.error || 'Email ou mot de passe incorrect');
+    } else {
       window.location.href = '/dashboard';
-    } catch (err: any) {
-      setError(err.message || 'Email ou mot de passe incorrect');
     }
 
     setLoading(false);

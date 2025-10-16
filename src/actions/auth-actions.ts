@@ -36,7 +36,7 @@ async function getSupabaseServerClient() {
   );
 }
 
-// Client service role
+// 🔹 Client service role
 const supabaseService = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -96,7 +96,7 @@ export async function signUp(
 
     if (orgError) {
       console.error('Error creating organization:', orgError);
-      return { success: false, error: 'Erreur de création d\'organisation' };
+      return { success: false, error: "Erreur de création d'organisation" };
     }
 
     // 2. Création de l'utilisateur auth
@@ -135,7 +135,7 @@ export async function signUp(
 
       if (userError) {
         console.error('Error creating user:', userError);
-        return { success: false, error: 'Erreur lors de la création de l\'utilisateur' };
+        return { success: false, error: "Erreur lors de la création de l'utilisateur" };
       }
     }
 
@@ -148,20 +148,26 @@ export async function signUp(
   }
 }
 
+// ✅ version corrigée de signIn()
 export async function signIn(email: string, password: string) {
-  const supabase = await getSupabaseServerClient();
+  try {
+    const supabase = await getSupabaseServerClient();
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-  if (error) {
-    console.error("SignIn error:", error.message);
-    throw new Error(error.message);
+    if (error) {
+      console.error("Erreur de connexion :", error.message);
+      return { success: false, error: 'Email ou mot de passe incorrect' };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error("Erreur inattendue dans signIn:", err);
+    return { success: false, error: 'Une erreur inattendue est survenue' };
   }
-
-  return data;
 }
 
 export async function signOut(): Promise<void> {
