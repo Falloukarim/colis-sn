@@ -36,7 +36,7 @@ export async function getPrixKg() {
 
     if (!userData) throw new Error('Utilisateur non trouvé');
 
-    // Récupérer les prix de l'organisation
+    // Récupérer les prix de l'organisation AVEC le champ type
     const { data: prix, error } = await supabase
       .from('prix_kg')
       .select('*')
@@ -46,7 +46,13 @@ export async function getPrixKg() {
 
     if (error) throw error;
 
-    return { success: true, prix: prix || [] };
+    // S'assurer que tous les prix ont un type
+    const prixAvecType = (prix || []).map(p => ({
+      ...p,
+      type: p.type || 'produit' // Valeur par défaut si le champ n'existe pas
+    }));
+
+    return { success: true, prix: prixAvecType };
   } catch (error) {
     console.error('Error fetching prix kg:', error);
     return { success: false, error: 'Erreur lors de la récupération des prix', prix: [] };
@@ -70,9 +76,10 @@ export async function createPrixKg(formData: FormData) {
     if (!userData) throw new Error('Utilisateur non trouvé');
 
     const nom = formData.get('nom') as string;
-    const prix = parseFloat(formData.get('prix') as string);
+    const prixValue = parseFloat(formData.get('prix') as string);
     const description = formData.get('description') as string;
     const isDefault = formData.get('is_default') === 'on';
+    const type = formData.get('type') as 'produit' | 'service';
 
     // Si c'est le prix par défaut, désactiver les autres par défaut
     if (isDefault) {
@@ -87,9 +94,10 @@ export async function createPrixKg(formData: FormData) {
       .insert([{
         organization_id: userData.organization_id,
         nom,
-        prix,
+        prix: prixValue,
         description,
-        is_default: isDefault
+        is_default: isDefault,
+        type: type
       }]);
 
     if (error) throw error;

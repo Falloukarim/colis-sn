@@ -44,23 +44,26 @@ export interface Client {
 }
 
 export interface Commande {
+  accompte: number | null | undefined;
+  notes: any;
   id: string;
   organization_id: string;
   client_id: string;
   statut: 'en_cours' | 'disponible' | 'remis';
-  poids: number | null;
-  prix_kg: number | null;
-  montant_total: number | null;
-  qr_code: string | null;
-  numero_commande: string;
-  date_retrait: string | null;
-  date_reception: string | null;
+  poids?: number | null;
+  quantite?: number | null; 
+  prix_kg?: number | null;
+  montant_total?: number | null;
+  qr_code?: string | null;
   created_at: string;
   updated_at: string;
-  scanned_by?: string | null;
-  scanned_at?: string | null;
+  date_retrait?: string | null;
+  numero_commande: string;
+  date_reception?: string | null;
   date_livraison_prevue?: string | null;
   description?: string | null;
+  scanned_by?: string | null;
+  scanned_at?: string | null;
 }
 
 export interface Notification {

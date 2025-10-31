@@ -19,18 +19,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { getCommandeById } from '@/actions/commande-actions';
-import { getStatutDisplayName, getStatutColor, calculateMontantTotal, CommandeStatut } from '@/types/commande';
 import { CommandActions } from '@/components/commandes/CommandActions';
 import { QuickActions } from '@/components/commandes/QuickActions';
+import { 
+  isService, 
+  calculateMontantTotal,
+  getStatutConfig,
+  formatCommandeData 
+} from '@/lib/utils/commande';
 
 interface CommandeDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
+// Définir les étapes avec les icônes localement
 const STATUT_STEPS = [
-  { value: 'en_cours' as CommandeStatut, label: 'En Cours', icon: Clock, description: 'En traitement' },
-  { value: 'disponible' as CommandeStatut, label: 'Disponible', icon: Package, description: 'Prête au retrait' },
-  { value: 'remis' as CommandeStatut, label: 'Remis', icon: CheckCircle, description: 'Livrée' }
+  { value: 'en_cours' as const, label: 'En Cours', icon: Clock, description: 'En traitement' },
+  { value: 'disponible' as const, label: 'Disponible', icon: Package, description: 'Prête au retrait' },
+  { value: 'remis' as const, label: 'Remis', icon: CheckCircle, description: 'Livrée' }
 ];
 
 export default async function CommandeDetailPage({
@@ -44,7 +50,11 @@ export default async function CommandeDetailPage({
     notFound();
   }
 
-  const montantTotal = calculateMontantTotal(commande);
+  // Formater les données de la commande
+  const formattedCommande = formatCommandeData(commande);
+  const statutConfig = getStatutConfig(commande.statut);
+
+  // Calculer la progression manuellement
   const currentStatutIndex = STATUT_STEPS.findIndex(step => step.value === commande.statut);
   const progressValue = ((currentStatutIndex + 1) / STATUT_STEPS.length) * 100;
 
@@ -66,6 +76,11 @@ export default async function CommandeDetailPage({
                 </h1>
                 <p className="text-gray-600 mt-1 text-sm sm:text-base">
                   Commande #{commande.numero_commande || commande.id.slice(0, 8)}
+                  {formattedCommande.isService && (
+                    <Badge variant="secondary" className="ml-2 bg-blue-100 text-blue-800">
+                      Service
+                    </Badge>
+                  )}
                 </p>
               </div>
             </div>
@@ -140,6 +155,11 @@ export default async function CommandeDetailPage({
                 <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <Package className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                   Informations Générales
+                  {formattedCommande.isService && (
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                      Service
+                    </Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -147,8 +167,8 @@ export default async function CommandeDetailPage({
                   <div className="space-y-3 sm:space-y-4">
                     <div className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg">
                       <span className="font-medium text-gray-700">Statut</span>
-                      <Badge className={`text-xs sm:text-sm ${getStatutColor(commande.statut as CommandeStatut)}`}>
-                        {getStatutDisplayName(commande.statut as CommandeStatut)}
+                      <Badge className={`text-xs sm:text-sm ${statutConfig.color}`}>
+                        {statutConfig.icon} {statutConfig.label}
                       </Badge>
                     </div>
                     
@@ -162,7 +182,8 @@ export default async function CommandeDetailPage({
                     {commande.poids && (
                       <div className="flex items-center justify-between p-2 sm:p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
                         <span className="font-medium text-blue-800 flex items-center gap-1 sm:gap-2 text-sm sm:text-base">
-                          <Scale className="h-3 w-3 sm:h-4 sm:w-4" /> Poids
+                          <Scale className="h-3 w-3 sm:h-4 sm:w-4" /> 
+                          {formattedCommande.isService ? 'Poids (optionnel)' : 'Poids'}
                         </span>
                         <span className="font-bold text-blue-800 text-sm sm:text-base">{commande.poids} kg</span>
                       </div>
@@ -173,18 +194,21 @@ export default async function CommandeDetailPage({
                     {commande.prix_kg && (
                       <div className="flex items-center justify-between p-2 sm:p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg">
                         <span className="font-medium text-green-800 flex items-center gap-1 sm:gap-2 text-sm sm:text-base">
-                          <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" /> Prix au kg
+                          <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" /> 
+                          {formattedCommande.isService ? 'Prix du service' : 'Prix au kg'}
                         </span>
-                        <span className="font-bold text-green-800 text-sm sm:text-base">{commande.prix_kg} XOF/kg</span>
+                        <span className="font-bold text-green-800 text-sm sm:text-base">
+                          {formattedCommande.displayPrix}
+                        </span>
                       </div>
                     )}
 
-                    {montantTotal > 0 && (
+                    {formattedCommande.montantTotal > 0 && (
                       <div className="flex items-center justify-between p-3 sm:p-4 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg text-white">
                         <span className="font-medium flex items-center gap-1 sm:gap-2 text-sm sm:text-base">
                           <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" /> Montant total
                         </span>
-                        <span className="text-lg sm:text-xl font-bold">{montantTotal} XOF</span>
+                        <span className="text-lg sm:text-xl font-bold">{formattedCommande.montantTotal} XOF</span>
                       </div>
                     )}
 
@@ -202,6 +226,12 @@ export default async function CommandeDetailPage({
                   <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-slate-50 to-gray-100 rounded-xl">
                     <span className="font-medium text-gray-700 mb-2 block text-sm sm:text-base">Description</span>
                     <p className="text-gray-800 leading-relaxed text-sm sm:text-base">{commande.description}</p>
+                    {formattedCommande.isService && (
+                      <div className="mt-2 flex items-center gap-2 text-blue-600 text-sm">
+                        <Truck className="h-4 w-4" />
+                        <span>Commande de service - Le poids n'est pas obligatoire</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -327,15 +357,20 @@ export default async function CommandeDetailPage({
               </CardHeader>
               <CardContent>
                 <div className="text-center space-y-2 sm:space-y-3">
-                  <Badge className={`text-sm sm:text-base px-3 sm:px-4 py-1.5 sm:py-2 ${getStatutColor(commande.statut as CommandeStatut)}`}>
-                    {getStatutDisplayName(commande.statut as CommandeStatut)}
+                  <Badge className={`text-sm sm:text-base px-3 sm:px-4 py-1.5 sm:py-2 ${statutConfig.color}`}>
+                    {statutConfig.icon} {statutConfig.label}
                   </Badge>
                   
                   <div className="text-xs sm:text-sm text-gray-600 space-y-1">
                     {commande.statut === 'en_cours' && (
                       <>
                         <p>🔄 En attente de réception et pesée</p>
-                        <p className="text-xs">Produit en cours de traitement</p>
+                        <p className="text-xs">
+                          {formattedCommande.isService 
+                            ? 'Service en cours de traitement' 
+                            : 'Produit en cours de traitement'
+                          }
+                        </p>
                       </>
                     )}
                     {commande.statut === 'disponible' && (
@@ -346,11 +381,19 @@ export default async function CommandeDetailPage({
                     )}
                     {commande.statut === 'remis' && (
                       <>
-                        <p>🎉 Commande récupérée</p>
+                        <p>🎉 {formattedCommande.isService ? 'Service terminé' : 'Commande récupérée'}</p>
                         <p className="text-xs">Transaction terminée</p>
                       </>
                     )}
                   </div>
+
+                  {commande.statut === 'remis' && (
+                    <div className="p-2 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-xs text-green-800">
+                        ✅ Statut défini par scan QR code
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

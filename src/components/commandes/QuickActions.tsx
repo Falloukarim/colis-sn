@@ -1,4 +1,3 @@
-// src/components/commandes/QuickActions.tsx
 'use client';
 
 import { useRouter } from 'next/navigation';

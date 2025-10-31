@@ -1,7 +1,6 @@
-// src/app/dashboard/commandes/[id]/edit/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, 
@@ -16,9 +15,9 @@ import {
   Package,
   Truck,
   Check,
-  Sparkles,
-  ChevronDown,
-  ChevronUp
+  Hash,
+  Star,
+  Info
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -27,28 +26,24 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { getCommandeById, updateCommandeStatus } from '@/actions/commande-actions';
-import { getPrixKg } from '@/actions/prix-actions';
 import { Commande, CommandeStatut } from '@/types/commande';
-import { getStatutDisplayName } from '@/types/commande';
+import { 
+  isService, 
+  getCommandeSteps,
+  calculateMontantTotal,
+  getStatutConfig 
+} from '@/lib/utils/commande';
 
 interface EditCommandePageProps {
   params: Promise<{ id: string }>;
 }
 
 interface FormData {
-  poids: string;
-  prix_kg: string;
-  selected_prix_id: string;
+  poids: string; // Uniquement pour les produits (non-services)
   statut: CommandeStatut;
-}
-
-interface PrixKg {
-  id: string;
-  nom: string;
-  prix: number;
-  description?: string;
 }
 
 const STATUT_STEPS: { value: CommandeStatut; label: string; icon: React.ComponentType; description: string }[] = [
@@ -62,19 +57,54 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
   const [loading, setLoading] = useState(false);
   const [commande, setCommande] = useState<Commande | null>(null);
   const [commandeId, setCommandeId] = useState<string | null>(null);
-  const [prixOptions, setPrixOptions] = useState<PrixKg[]>([]);
   const [formData, setFormData] = useState<FormData>({
     poids: '',
-    prix_kg: '',
-    selected_prix_id: '',
     statut: 'en_cours'
   });
   const [isClient, setIsClient] = useState(false);
-  const [activeSection, setActiveSection] = useState<'pesee' | 'statut'>('pesee');
+  const [activeSection, setActiveSection] = useState<'details' | 'statut'>('details');
 
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Détection ULTRA SIMPLIFIÉE du type de commande
+  const isServiceCommande = useMemo(() => {
+    if (!commande) return false;
+    
+    // RÈGLE SIMPLE : Si la description contient des mots-clés de service, c'est un service
+    // Sinon, c'est un produit
+    return isService(commande.description);
+  }, [commande]);
+
+  // Vérifier si la commande a déjà un poids défini (uniquement pour les produits non-services)
+  const hasExistingPoids = useMemo(() => {
+    if (!commande || isServiceCommande) return false;
+    return commande.poids !== null && commande.poids !== undefined && commande.poids > 0;
+  }, [commande, isServiceCommande]);
+
+  // Vérifier si le prix est défini
+  const hasExistingPrix = useMemo(() => {
+    return commande?.prix_kg !== null && commande?.prix_kg !== undefined;
+  }, [commande]);
+
+  // Vérifier si la quantité est définie (pour les services)
+  const hasExistingQuantite = useMemo(() => {
+    return commande?.quantite !== null && commande?.quantite !== undefined;
+  }, [commande]);
+
+  // Vérifier si toutes les données sont complètes
+  const hasCompleteData = useMemo(() => {
+    if (!commande) return false;
+    
+    if (isServiceCommande) {
+      // Pour les services: prix_kg et quantite doivent être définis
+      return hasExistingPrix && hasExistingQuantite;
+    } else {
+      // Pour les produits: prix_kg et poids doivent être définis
+      return hasExistingPrix && hasExistingPoids;
+    }
+  }, [commande, isServiceCommande, hasExistingPrix, hasExistingQuantite, hasExistingPoids]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -82,12 +112,6 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
       setCommandeId(id);
 
       try {
-        // Charger les prix prédéfinis
-        const prixResult = await getPrixKg();
-        if (prixResult.success) {
-          setPrixOptions(prixResult.prix);
-        }
-
         // Charger la commande
         const { commande, error } = await getCommandeById(id);
         if (error || !commande) {
@@ -95,10 +119,15 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
           router.push('/dashboard/commandes');
         } else {
           setCommande(commande);
+
+          // Pour les produits non-services, initialiser le poids s'il n'est pas déjà défini
+          const isServiceByDescription = isService(commande.description);
+          const poidsValue = !isServiceByDescription && !commande.poids 
+            ? '' 
+            : commande.poids?.toString() || '';
+          
           setFormData({
-            poids: commande.poids?.toString() || '',
-            prix_kg: commande.prix_kg?.toString() || '',
-            selected_prix_id: '',
+            poids: poidsValue,
             statut: commande.statut as CommandeStatut
           });
         }
@@ -111,36 +140,54 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
     fetchData();
   }, [resolvedParams, router]);
 
-  const handlePrixSelection = (prixId: string) => {
-    const selectedPrix = prixOptions.find(p => p.id === prixId);
-    if (selectedPrix) {
-      setFormData(prev => ({
-        ...prev,
-        selected_prix_id: prixId,
-        prix_kg: selectedPrix.prix.toString()
-      }));
-    }
-  };
-
-  const handleCustomPrixChange = (value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      selected_prix_id: 'custom',
-      prix_kg: value
-    }));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commandeId) return;
+    if (!commandeId || !commande) return;
     setLoading(true);
 
     try {
+      // Validation adaptée selon le type
+      const validation = validateCommandeUpdateForEdit(
+        commande,
+        formData.statut,
+        isServiceCommande ? undefined : formData.poids, // Uniquement le poids pour les produits non-services
+        isServiceCommande,
+        hasCompleteData,
+        hasExistingPoids
+      );
+
+      if (!validation.isValid) {
+        validation.errors.forEach(error => {
+          toast.error('Erreur', { description: error });
+        });
+        setLoading(false);
+        return;
+      }
+
+      let quantiteValue: number | undefined;
+      let poidsValue: number | undefined;
+
+      // Pour les services, utiliser la quantité existante ou 1 par défaut
+      if (isServiceCommande) {
+        quantiteValue = commande.quantite || 1; // Par défaut 1 pour les services
+      } else {
+        // Pour les produits non-services, utiliser le nouveau poids ou l'existant
+        if (formData.poids && !hasExistingPoids) {
+          poidsValue = parseFloat(formData.poids);
+        } else if (hasExistingPoids) {
+          poidsValue = commande.poids || undefined;
+        }
+      }
+
+      // Utiliser le prix défini à la création (avec gestion de null/undefined)
+      // Si pas de prix défini, on ne peut pas mettre à jour vers "disponible"
+      const prixKgValue = commande.prix_kg !== null ? commande.prix_kg : undefined;
+
       const result = await updateCommandeStatus(
         commandeId,
         formData.statut,
-        formData.poids ? parseFloat(formData.poids) : undefined,
-        formData.prix_kg ? parseFloat(formData.prix_kg) : undefined
+        isServiceCommande ? quantiteValue : poidsValue,
+        prixKgValue
       );
 
       if (result.success) {
@@ -168,26 +215,56 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: value,
-      selected_prix_id: name === 'prix_kg' ? 'custom' : prev.selected_prix_id
+      [name]: value
     }));
   };
 
   const handleStatutChange = (newStatut: CommandeStatut) => {
+    // Empêcher le statut "remis" depuis l'interface
+    if (newStatut === 'remis') {
+      toast.error('Action non autorisée', {
+        description: 'Le statut "Remis" ne peut être défini que via le scan QR code'
+      });
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       statut: newStatut
     }));
   };
 
-  const calculateMontantTotal = () => {
-    if (!formData.poids || !formData.prix_kg) return 0;
-    return parseFloat(formData.poids) * parseFloat(formData.prix_kg);
-  };
+  // Calcul du montant total avec gestion des valeurs null/undefined
+  const montantTotal = useMemo(() => {
+    if (!commande) return 0;
 
-  const montantTotal = calculateMontantTotal();
-  const progressValue = STATUT_STEPS.findIndex(step => step.value === formData.statut) + 1;
-  const progressMax = STATUT_STEPS.length;
+    const prixKg = commande.prix_kg !== null ? commande.prix_kg : 0;
+    
+    if (isServiceCommande) {
+      const quantite = commande.quantite || 1; // Par défaut 1 pour les services
+      return calculateMontantTotal({
+        ...commande,
+        quantite,
+        prix_kg: prixKg,
+      });
+    } else {
+      const poids = formData.poids ? parseFloat(formData.poids) : (commande.poids || 0);
+      return calculateMontantTotal({
+        ...commande,
+        poids,
+        prix_kg: prixKg,
+      });
+    }
+  }, [commande, formData.poids, isServiceCommande]);
+
+  const { progress, currentIndex } = getCommandeSteps(formData.statut);
+  const statutConfig = getStatutConfig(formData.statut);
+
+  // Déterminer si le poids est requis pour le statut "disponible" (uniquement pour les produits non-services)
+  const isPoidsRequired = formData.statut === 'disponible' && !isServiceCommande && !hasExistingPoids;
+
+  // Déterminer si le prix est requis pour le statut "disponible"
+  const isPrixRequired = formData.statut === 'disponible' && !hasExistingPrix;
 
   if (!commande || !isClient) {
     return (
@@ -217,6 +294,21 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
               </h1>
               <p className="text-gray-600 text-sm lg:text-base truncate">
                 #{commande.numero_commande}
+                {isServiceCommande && (
+                  <Badge variant="secondary" className="ml-2 bg-blue-100 text-blue-800">
+                    Service
+                  </Badge>
+                )}
+                {!isServiceCommande && (
+                  <Badge variant="outline" className="ml-2 bg-green-100 text-green-800">
+                    Produit
+                  </Badge>
+                )}
+                {hasCompleteData && (
+                  <Badge variant="outline" className="ml-2 bg-green-100 text-green-800">
+                    Données complètes
+                  </Badge>
+                )}
               </p>
             </div>
             <Badge variant="secondary" className="hidden lg:flex px-3 py-1 text-sm">
@@ -224,42 +316,13 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
             </Badge>
           </div>
 
-          {/* Barre de progression - version mobile compacte */}
+          {/* Barre de progression */}
           <div className="mt-3 lg:mt-6">
             <div className="flex justify-between items-center text-xs lg:text-sm text-gray-600 mb-2">
               <span>Progression</span>
-              <span>{progressValue}/{progressMax}</span>
+              <span>{currentIndex + 1}/{STATUT_STEPS.length}</span>
             </div>
-            <Progress value={(progressValue / progressMax) * 100} className="h-1 lg:h-2" />
-            
-            {/* Étapes de statut - version mobile horizontale */}
-            {/* Étapes de statut - version mobile horizontale */}
-<div className="flex justify-between mt-3 lg:hidden">
-  {STATUT_STEPS.map((step, index) => {
-    const isActive = formData.statut === step.value;
-    const isCompleted = index < STATUT_STEPS.findIndex(s => s.value === formData.statut);
-    const StepIcon = step.icon;
-    
-    return (
-      <div key={step.value} className="flex flex-col items-center text-center flex-1">
-        <div className={`w-6 h-6 rounded-full flex items-center justify-center mb-1 ${
-          isActive 
-            ? 'bg-blue-500 text-white' 
-            : isCompleted
-            ? 'bg-green-500 text-white'
-            : 'bg-gray-200 text-gray-500'
-        }`}>
-          {/* CORRECTION ICI */}
-<StepIcon />        </div>
-        <span className={`text-xs font-medium ${
-          isActive ? 'text-blue-600' : isCompleted ? 'text-green-600' : 'text-gray-500'
-        }`}>
-          {step.label.split(' ')[0]}
-        </span>
-      </div>
-    );
-  })}
-</div>
+            <Progress value={progress} className="h-1 lg:h-2" />
           </div>
         </div>
       </div>
@@ -269,14 +332,14 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
         <div className="lg:hidden mb-4">
           <div className="flex border-b border-gray-200">
             <button
-              onClick={() => setActiveSection('pesee')}
+              onClick={() => setActiveSection('details')}
               className={`flex-1 py-3 text-center font-medium text-sm ${
-                activeSection === 'pesee' 
+                activeSection === 'details' 
                   ? 'text-blue-600 border-b-2 border-blue-600' 
                   : 'text-gray-500'
               }`}
             >
-              📊 Pesée & Prix
+              📊 Détails
             </button>
             <button
               onClick={() => setActiveSection('statut')}
@@ -294,101 +357,186 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
         <div className="grid gap-4 lg:gap-8 lg:grid-cols-3">
           {/* Section Édition - Principale sur mobile */}
           <div className="lg:col-span-2 space-y-4 lg:space-y-6">
-            {/* Section Pesée - Visible sur mobile selon la navigation */}
-            <Card className={`border-0 shadow-lg lg:shadow-xl ${activeSection !== 'pesee' ? 'hidden lg:block' : ''}`}>
+            {/* Section Détails - Visible sur mobile selon la navigation */}
+            <Card className={`border-0 shadow-lg lg:shadow-xl ${activeSection !== 'details' ? 'hidden lg:block' : ''}`}>
               <CardHeader className="pb-3 lg:pb-4">
                 <CardTitle className="flex items-center gap-2 text-lg lg:text-xl">
-                  <Scale className="h-5 w-5 text-blue-600" />
-                  Informations de Pesée
+                  {isServiceCommande ? (
+                    <Hash className="h-5 w-5 text-blue-600" />
+                  ) : (
+                    <Scale className="h-5 w-5 text-blue-600" />
+                  )}
+                  Informations {isServiceCommande ? 'du Service' : 'du Produit'}
+                  {isServiceCommande && (
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                      Service
+                    </Badge>
+                  )}
+                  {!isServiceCommande && (
+                    <Badge variant="outline" className="bg-green-100 text-green-800">
+                      Produit
+                    </Badge>
+                  )}
                 </CardTitle>
+                <CardDescription>
+                  {hasCompleteData 
+                    ? 'Toutes les données sont complètes. Vous pouvez modifier le statut directement.'
+                    : isServiceCommande
+                      ? 'Service - Les informations sont définies à la création'
+                      : 'Complétez le poids pour marquer comme disponible'
+                  }
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4 lg:space-y-6">
-                  {/* Poids */}
-                  <div className="space-y-2">
-                    <Label htmlFor="poids" className="flex items-center gap-2 text-blue-800 text-sm lg:text-base">
-                      <Scale className="h-4 w-4" />
-                      Poids (kg) *
-                    </Label>
-                    <Input
-                      id="poids"
-                      name="poids"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={formData.poids}
-                      onChange={handleInputChange}
-                      className="rounded-lg text-lg font-medium h-12 lg:h-14"
-                    />
-                  </div>
+                  
+                  {/* Alert pour données manquantes */}
+                  {!hasCompleteData && (
+                    <Alert className="bg-amber-50 border-amber-200">
+                      <Info className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-800">
+                        <strong>Informations manquantes</strong> - Cette commande n'a pas de prix défini. 
+                        {isServiceCommande 
+                          ? ' Les services nécessitent un prix et une quantité.' 
+                          : ' Les produits nécessitent un prix et un poids.'
+                        }
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
-                  {/* Prix au kg */}
-                  <div className="space-y-2">
-                    <Label htmlFor="prix_kg" className="flex items-center gap-2 text-blue-800 text-sm lg:text-base">
-                      <DollarSign className="h-4 w-4" />
-                      Prix au kg (XOF) *
+                  {/* Alert pour données complètes */}
+                  {hasCompleteData && (
+                    <Alert className="bg-green-50 border-green-200">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-green-800">
+                        <strong>Données complètes</strong> - Toutes les informations sont renseignées. 
+                        Vous pouvez modifier le statut directement.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {/* Saisie du poids uniquement pour les produits non-services sans poids existant */}
+                  {!isServiceCommande && !hasExistingPoids && (
+                    <div className="space-y-2">
+                      <Label htmlFor="poids" className="flex items-center gap-2 text-blue-800 text-sm lg:text-base">
+                        <Scale className="h-4 w-4" />
+                        Poids (kg)
+                        {isPoidsRequired && (
+                          <Badge variant="outline" className="bg-amber-100 text-amber-700 text-xs">
+                            Obligatoire
+                          </Badge>
+                        )}
+                      </Label>
+                      <Input
+                        id="poids"
+                        name="poids"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="5.00"
+                        value={formData.poids}
+                        onChange={handleInputChange}
+                        className="rounded-lg text-lg font-medium h-12 lg:h-14"
+                        required={isPoidsRequired}
+                      />
+                      {isPoidsRequired && !formData.poids && (
+                        <p className="text-sm text-amber-600">
+                          ⚠️ Le poids est obligatoire pour marquer comme disponible
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-600">
+                        Ex: 5.25 kg, 10.50 kg, etc.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Affichage des données existantes */}
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                    <Label className="text-green-800 font-semibold text-sm mb-3 block">
+                      📋 Informations définies à la création
                     </Label>
-                    
-                    {/* Prix prédéfinis - Version mobile compacte */}
-                    {prixOptions.length > 0 && (
-                      <div className="mb-3">
-                        <Label className="text-sm text-blue-700 mb-2 block">Prix prédéfinis:</Label>
-                        <div className="flex flex-wrap gap-1 lg:gap-2">
-                          {prixOptions.slice(0, 3).map((prix) => (
-                            <Button
-                              key={prix.id}
-                              type="button"
-                              variant={formData.selected_prix_id === prix.id ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handlePrixSelection(prix.id)}
-                              className={`text-xs lg:text-sm rounded-full h-8 lg:h-9 ${
-                                formData.selected_prix_id === prix.id 
-                                  ? 'bg-blue-600 text-white' 
-                                  : 'border-blue-200 text-blue-700'
-                              }`}
-                            >
-                              {prix.nom} - {prix.prix} XOF
-                            </Button>
-                          ))}
-                          {prixOptions.length > 3 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="text-xs rounded-full h-8 border-gray-300"
-                            >
-                              +{prixOptions.length - 3}
-                            </Button>
-                          )}
+                    <div className="space-y-2 text-sm">
+                      {/* Prix */}
+                      {hasExistingPrix ? (
+                        <div className="flex justify-between items-center">
+                          <span className="text-green-700">
+                            {isServiceCommande ? 'Prix unitaire:' : 'Prix au kg:'}
+                          </span>
+                          <span className="font-semibold bg-white px-2 py-1 rounded">
+                            {commande.prix_kg} XOF
+                            {isServiceCommande ? ' (fixe)' : '/kg'}
+                          </span>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex justify-between items-center">
+                          <span className="text-amber-700">Prix:</span>
+                          <span className="font-semibold bg-amber-100 px-2 py-1 rounded text-amber-800">
+                            Non défini
+                          </span>
+                        </div>
+                      )}
 
-                    <Input
-                      id="prix_kg"
-                      name="prix_kg"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={formData.prix_kg}
-                      onChange={(e) => handleCustomPrixChange(e.target.value)}
-                      className="rounded-lg text-lg font-medium h-12 lg:h-14"
-                    />
+                      {/* Quantité pour les services */}
+                      {isServiceCommande && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-green-700">Quantité:</span>
+                          <span className="font-semibold bg-white px-2 py-1 rounded">
+                            {hasExistingQuantite ? commande.quantite : '1 (par défaut)'}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Poids pour les produits non-services (s'il existe déjà) */}
+                      {!isServiceCommande && hasExistingPoids && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-green-700">Poids:</span>
+                          <span className="font-semibold bg-white px-2 py-1 rounded">
+                            {commande.poids} kg
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Montant total calculé */}
+                      {commande.montant_total !== undefined && commande.montant_total !== null && (
+                        <div className="flex justify-between items-center border-t border-green-200 pt-2 mt-2">
+                          <span className="text-green-800 font-semibold">Total:</span>
+                          <span className="font-bold text-green-800 bg-white px-2 py-1 rounded">
+                            {commande.montant_total.toLocaleString('fr-FR')} XOF
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-green-600 mt-2">
+                      ✅ Ces données ont été définies lors de la création de la commande
+                    </p>
                   </div>
 
                   {/* Calcul du montant total */}
-                  {formData.poids && formData.prix_kg && (
-                    <div className="p-3 lg:p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg text-white">
+                  {hasExistingPrix && (
+                    <div className="p-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg text-white shadow-lg">
                       <div className="flex justify-between items-center">
                         <div>
-                          <div className="text-sm opacity-90">Montant total</div>
-                          <div className="text-xl lg:text-2xl font-bold">{montantTotal.toFixed(2)} XOF</div>
+                          <div className="text-sm opacity-90">Montant total estimé</div>
+                          <div className="text-2xl lg:text-3xl font-bold">{montantTotal.toLocaleString('fr-FR')} XOF</div>
                         </div>
                         <div className="text-right text-xs lg:text-sm opacity-90">
-                          <div>{formData.poids} kg × {formData.prix_kg} XOF</div>
-                          <div>Calcul automatique</div>
+                          {isServiceCommande ? (
+                            <div className="space-y-1">
+                              <div>
+                                {hasExistingQuantite ? commande.quantite : 1} × 
+                                {commande.prix_kg} XOF
+                              </div>
+                              <div className="text-xs">Quantité × Prix unitaire</div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div>
+                                {(formData.poids ? parseFloat(formData.poids) : (commande.poids || 0))} kg × 
+                                {commande.prix_kg} XOF/kg
+                              </div>
+                              <div className="text-xs">Poids × Prix au kg</div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -397,22 +545,37 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
               </CardContent>
             </Card>
 
-            {/* Section Statut - Visible sur mobile selon la navigation */}
             <Card className={`border-0 shadow-lg lg:shadow-xl ${activeSection !== 'statut' ? 'hidden lg:block' : ''}`}>
               <CardHeader className="pb-3 lg:pb-4">
                 <CardTitle className="flex items-center gap-2 text-lg lg:text-xl">
                   <CheckCircle className="h-5 w-5 text-green-600" />
                   Statut de la Commande
                 </CardTitle>
+                <CardDescription>
+                  {hasCompleteData 
+                    ? 'Toutes les données sont complètes. Vous pouvez modifier le statut.'
+                    : isServiceCommande
+                      ? 'Service - Modifiez le statut directement'
+                      : 'Complétez le poids pour marquer comme disponible'
+                  }
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* Boutons de statut - Version mobile verticale */}
+                  {/* Boutons de statut */}
                   <div className="flex flex-col gap-2 lg:flex-row lg:gap-3 lg:flex-wrap">
                     {STATUT_STEPS.map((step) => {
                       const StepIcon = step.icon;
                       const isActive = formData.statut === step.value;
-                      const isDisabled = step.value !== 'en_cours' && (!formData.poids || !formData.prix_kg);
+                      const isRemis = step.value === 'remis';
+                      
+                      // Validation : pour "disponible", le poids est requis uniquement pour les produits non-services sans poids existant
+                      let isDisabled = false;
+                      if (step.value === 'disponible' && !hasCompleteData) {
+                        if (!isServiceCommande && !hasExistingPoids && !formData.poids) {
+                          isDisabled = true;
+                        }
+                      }
                       
                       return (
                         <Button
@@ -420,37 +583,67 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
                           type="button"
                           variant={isActive ? "default" : "outline"}
                           onClick={() => !isDisabled && handleStatutChange(step.value)}
-                          disabled={isDisabled}
+                          disabled={isDisabled || isRemis}
                           className={`justify-start lg:flex-1 lg:min-w-[140px] h-12 lg:h-auto lg:py-4 px-3 rounded-xl transition-all duration-200 ${
                             isActive 
-                              ? 'shadow-lg' 
-                              : ''
-                          } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              ? 'shadow-lg bg-green-600 hover:bg-green-700' 
+                              : isRemis
+                              ? 'opacity-50 cursor-not-allowed bg-gray-100'
+                              : isDisabled
+                              ? 'opacity-50 cursor-not-allowed bg-gray-100'
+                              : 'hover:bg-gray-50'
+                          }`}
                         >
                           <div className="flex items-center gap-2 lg:gap-2">
-                           <StepIcon />
-                            <span className="text-sm font-medium">{step.label}</span>
+                            <StepIcon />
+                            <span className="text-sm font-medium">
+                              {step.label}
+                              {isRemis && ' (Scan QR)'}
+                              {isDisabled && ' (Poids manquant)'}
+                            </span>
                           </div>
                         </Button>
                       );
                     })}
                   </div>
                   
-                  <div className="text-center">
-                    <Badge variant="secondary" className="px-3 py-1 text-sm">
-                      Statut actuel: {getStatutDisplayName(formData.statut)}
+                  <div className="text-center space-y-2">
+                    <Badge className={`px-3 py-1 text-sm ${statutConfig.color}`}>
+                      {statutConfig.icon} {statutConfig.label}
                     </Badge>
-                    {(!formData.poids || !formData.prix_kg) && formData.statut === 'en_cours' && (
-                      <p className="text-sm text-amber-600 mt-2">
-                        ⚠️ Renseignez le poids et le prix pour changer le statut
-                      </p>
+                    
+                    {!hasCompleteData && formData.statut === 'en_cours' && !isServiceCommande && (
+                      <Alert className="bg-amber-50 border-amber-200">
+                        <Info className="h-4 w-4 text-amber-600" />
+                        <AlertDescription className="text-amber-800">
+                          <strong>Poids manquant</strong> - Complétez le poids pour pouvoir marquer la commande comme disponible.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {hasCompleteData && (
+                      <Alert className="bg-green-50 border-green-200">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-800">
+                          <strong>Prêt à être marqué comme disponible</strong> - Toutes les données sont complètes.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {formData.statut === 'remis' && (
+                      <Alert className="bg-blue-50 border-blue-200">
+                        <Info className="h-4 w-4 text-blue-600" />
+                        <AlertDescription className="text-blue-800">
+                          Ce statut ne peut être défini que via le scan QR code
+                        </AlertDescription>
+                      </Alert>
                     )}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Boutons d'action - Toujours visibles */}
+            {/* Boutons d'action */}
             <div className="flex flex-col sm:flex-row gap-3 lg:gap-4 pt-4 sticky bottom-4 bg-white/80 backdrop-blur-lg p-3 rounded-xl lg:relative lg:bg-transparent lg:backdrop-blur-none lg:p-0">
               <Button
                 type="submit"
@@ -464,7 +657,7 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
                 ) : (
                   <Save className="h-5 w-5 mr-2" />
                 )}
-                Enregistrer
+                Enregistrer les modifications
               </Button>
               
               <Link href={`/dashboard/commandes/${commandeId}`} className="order-1 sm:order-2">
@@ -480,7 +673,7 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
             </div>
           </div>
 
-          {/* Section Informations - Sidebar sur desktop, repliable sur mobile */}
+          {/* Section Informations */}
           <div className="lg:space-y-6">
             <Card className="border-0 shadow-lg lg:shadow-xl">
               <CardHeader className="pb-3 lg:pb-4">
@@ -519,6 +712,12 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
                     </Label>
                     <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-800">
                       {commande.description || 'Aucune description fournie'}
+                      {isServiceCommande && (
+                        <div className="mt-2 flex items-center gap-2 text-blue-600 text-xs">
+                          <Hash className="h-3 w-3" />
+                          <span>Commande de service</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -553,9 +752,99 @@ export default function EditCommandePage({ params: resolvedParams }: EditCommand
                 </div>
               </CardContent>
             </Card>
+
+            {/* Information sur les services */}
+            {isServiceCommande && (
+              <Card className="border-0 shadow-lg lg:shadow-xl bg-blue-50 border-blue-200">
+                <CardHeader className="pb-3 lg:pb-4">
+                  <CardTitle className="flex items-center gap-2 text-lg lg:text-xl text-blue-800">
+                    <Hash className="h-5 w-5" />
+                    Information Service
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm text-blue-700">
+                    <p className="font-semibold">✅ Pour les services :</p>
+                    <ul className="space-y-1 ml-4">
+                      <li>• <strong>Prix fixe défini à la création</strong></li>
+                      <li>• <strong>Quantité définie à la création</strong></li>
+                      <li>• <strong>Pas de modification des prix/quantité</strong></li>
+                      <li>• <strong>Pas de poids nécessaire</strong></li>
+                      <li>• <strong>Statut modifiable directement</strong></li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Information sur les produits non-services */}
+            {!isServiceCommande && (
+              <Card className="border-0 shadow-lg lg:shadow-xl bg-green-50 border-green-200">
+                <CardHeader className="pb-3 lg:pb-4">
+                  <CardTitle className="flex items-center gap-2 text-lg lg:text-xl text-green-800">
+                    <Scale className="h-5 w-5" />
+                    Information Produit
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm text-green-700">
+                    <p className="font-semibold">📦 Pour les produits :</p>
+                    <ul className="space-y-1 ml-4">
+                      <li>• <strong>Prix au kg défini à la création</strong></li>
+                      <li>• <strong>Poids à renseigner après pesage</strong></li>
+                      <li>• <strong>Montant = poids × prix au kg</strong></li>
+                      {!hasExistingPoids && (
+                        <li>• <strong className="text-amber-700">Poids requis pour "Disponible"</strong></li>
+                      )}
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+function validateCommandeUpdateForEdit(
+  commande: Commande,
+  newStatus: string,
+  poids?: string,
+  isServiceCommande: boolean = false,
+  hasCompleteData: boolean = false,
+  hasExistingPoids: boolean = false
+): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (newStatus === 'disponible') {
+    // Vérifier si le prix est défini
+    if (commande.prix_kg === null || commande.prix_kg === undefined) {
+      errors.push('Le prix est obligatoire pour marquer comme disponible');
+    }
+
+    // Pour les produits non-services, vérifier si le poids est défini (soit existant, soit nouveau)
+    if (!isServiceCommande && !hasExistingPoids && !poids) {
+      errors.push('Le poids est obligatoire pour marquer comme disponible');
+    }
+
+    // Validation du nouveau poids si fourni
+    if (poids) {
+      const poidsValue = parseFloat(poids);
+      if (poidsValue <= 0) {
+        errors.push('Le poids doit être supérieur à 0');
+      }
+    }
+  }
+
+  // Empêcher le statut "remis" depuis l'interface
+  if (newStatus === 'remis') {
+    errors.push('Le statut "Remis" ne peut être défini que via le scan QR code');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
 }

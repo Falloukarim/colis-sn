@@ -4,9 +4,12 @@ import { cn } from '@/lib/utils';
 
 interface StatsCardsProps {
   clientsCount: number;
+  commandesTotal?: number; // Nouvelle prop
   commandesEnCours: number;
   commandesDisponibles: number;
   commandesRemises: number;
+  produitsCount?: number; // Nouvelle prop
+  servicesCount?: number; // Nouvelle prop
 }
 
 export default function StatsCards({

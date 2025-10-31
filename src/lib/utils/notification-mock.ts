@@ -1,4 +1,3 @@
-// Service mock pour les notifications pendant la vérification Twilio
 
 export async function sendSMSMock(to: string, body: string): Promise<boolean> {
   try {

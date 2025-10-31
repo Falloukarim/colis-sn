@@ -1,6 +1,6 @@
-// commandes-page.tsx (version améliorée)
+// src/app/dashboard/commandes/page.tsx (version avec débogage)
 import Link from 'next/link';
-import { Download, Filter, Plus, Package, TrendingUp, Clock, CheckCircle, Truck } from 'lucide-react';
+import { Download, Filter, Plus, Package, TrendingUp, Clock, CheckCircle, Truck, Hash, Scale } from 'lucide-react';
 import { getCommandes } from '@/actions/commande-actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import CommandesTable from '@/components/commandes/commandes-table';
 import SearchCommande from '@/components/commandes/search-commande';
 import { ExportButton } from '@/components/commandes/export-button';
 import { getStatutDisplayName } from '@/types/commande';
+import { isService } from '@/lib/utils/commande';
 
 export default async function CommandesPage({
   searchParams,
@@ -27,10 +28,45 @@ export default async function CommandesPage({
 
   const { commandes, error } = await getCommandes();
 
+  // Fonction pour déterminer le type de commande avec débogage
+  const getCommandeType = (commande: any) => {
+    const isServiceCommande = isService(commande.description);
+    
+    // Debug logging
+    console.log(`🔍 Commande "${commande.description}":`, {
+      description: commande.description,
+      isService: isServiceCommande,
+      serviceKeywords: ['iphone', 'samsung', 'technologie', 'service', 'livraison']
+    });
+    
+    return isServiceCommande ? 'service' : 'produit';
+  };
+
+  // Fonction pour formater le prix selon le type
+  const formatPrix = (commande: any) => {
+    const type = getCommandeType(commande);
+    if (!commande.prix_kg) return 'Non défini';
+    
+    if (type === 'service') {
+      return `${commande.prix_kg.toLocaleString('fr-FR')} XOF (fixe)`;
+    } else {
+      return `${commande.prix_kg.toLocaleString('fr-FR')} XOF/kg`;
+    }
+  };
+
+  // Fonction pour formater le montant selon le type
+  const formatMontant = (commande: any) => {
+    const type = getCommandeType(commande);
+    if (!commande.montant_total) return 'Non calculé';
+    
+    return `${commande.montant_total.toLocaleString('fr-FR')} XOF`;
+  };
+
   const filteredCommandes = commandes.filter(commande => {
     const matchesSearch = searchQuery
       ? (commande.numero_commande?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-         (commande as any).client_nom?.toLowerCase().includes(searchQuery.toLowerCase()))
+         (commande as any).client_nom?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+         commande.description?.toLowerCase().includes(searchQuery.toLowerCase()))
       : true;
 
     const matchesStatus = statusFilter
@@ -40,11 +76,31 @@ export default async function CommandesPage({
     return matchesSearch && matchesStatus;
   });
 
+  // Statistiques par type avec débogage
+  const servicesCount = commandes.filter(c => getCommandeType(c) === 'service').length;
+  const produitsCount = commandes.filter(c => getCommandeType(c) === 'produit').length;
+
+  console.log('📊 Statistiques commandes:', {
+    total: commandes.length,
+    services: servicesCount,
+    produits: produitsCount,
+    commandesServices: commandes.filter(c => getCommandeType(c) === 'service').map(c => ({
+      description: c.description,
+      type: 'service'
+    })),
+    commandesProduits: commandes.filter(c => getCommandeType(c) === 'produit').map(c => ({
+      description: c.description,
+      type: 'produit'
+    }))
+  });
+
   const stats = {
     total: commandes.length,
     en_cours: commandes.filter(c => c.statut === 'en_cours').length,
     disponible: commandes.filter(c => c.statut === 'disponible').length,
     remis: commandes.filter(c => c.statut === 'remis').length,
+    services: servicesCount,
+    produits: produitsCount,
   };
 
   const getStatutIcon = (statut: string) => {
@@ -69,11 +125,21 @@ export default async function CommandesPage({
               <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                 Commandes
               </h1>
-              <p className="text-gray-600 mt-1 flex items-center gap-2">
+              <p className="text-gray-600 mt-1 flex items-center gap-2 flex-wrap">
                 <span>Gestion de votre activité de nettoyage</span>
-                <Badge variant="secondary" className="bg-purple-50 text-purple-700">
-                  {commandes.length} commande{commandes.length > 1 ? 's' : ''}
-                </Badge>
+                <div className="flex gap-2">
+                  <Badge variant="secondary" className="bg-purple-50 text-purple-700">
+                    {commandes.length} commande{commandes.length > 1 ? 's' : ''}
+                  </Badge>
+                  <Badge variant="outline" className="bg-orange-50 text-orange-700">
+                    <Scale className="h-3 w-3 mr-1" />
+                    {stats.produits} produit{stats.produits > 1 ? 's' : ''}
+                  </Badge>
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                    <Truck className="h-3 w-3 mr-1" />
+                    {stats.services} service{stats.services > 1 ? 's' : ''}
+                  </Badge>
+                </div>
               </p>
             </div>
           </div>
@@ -88,7 +154,7 @@ export default async function CommandesPage({
       </div>
 
       {/* Cartes de statistiques améliorées */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard
           title="Total"
           value={stats.total}
@@ -117,6 +183,20 @@ export default async function CommandesPage({
           description="Commandes terminées"
           gradient="from-gray-500 to-gray-600"
         />
+        <StatCard
+          title="Produits"
+          value={stats.produits}
+          icon={<Scale className="h-5 w-5" />}
+          description="remis après pesage"
+          gradient="from-orange-500 to-orange-600"
+        />
+        <StatCard
+          title="Services"
+          value={stats.services}
+          icon={<Hash className="h-5 w-5" />}
+          description="Prix fixes"
+          gradient="from-purple-500 to-purple-600"
+        />
       </div>
 
       {error && (
@@ -140,7 +220,17 @@ export default async function CommandesPage({
                     {statusFilter && ` avec le statut "${getStatutDisplayName(statusFilter as any)}"`}
                   </span>
                 ) : (
-                  'Toutes vos commandes en cours et terminées'
+                  <div className="flex items-center gap-2">
+                    <span>Toutes vos commandes</span>
+                    <Badge variant="outline" className="bg-orange-50">
+                      <Scale className="h-3 w-3 mr-1" />
+                      {stats.produits} produit{stats.produits > 1 ? 's' : ''}
+                    </Badge>
+                    <Badge variant="outline" className="bg-blue-50">
+                      <Truck className="h-3 w-3 mr-1" />
+                      {stats.services} service{stats.services > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
                 )}
               </CardDescription>
             </div>
@@ -202,7 +292,14 @@ export default async function CommandesPage({
         </CardHeader>
         
         <CardContent className="p-0">
-          <CommandesTable commandes={filteredCommandes} />
+          <CommandesTable 
+            commandes={filteredCommandes.map(commande => ({
+              ...commande,
+              type: getCommandeType(commande),
+              prix_formatted: formatPrix(commande),
+              montant_formatted: formatMontant(commande)
+            }))} 
+          />
         </CardContent>
       </Card>
     </div>
@@ -226,14 +323,14 @@ function StatCard({
   return (
     <Card className="relative overflow-hidden border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
       <div className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-br ${gradient} opacity-5 rounded-full -m-4`}></div>
-      <CardContent className="p-6">
+      <CardContent className="p-4">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-gray-600">{title}</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-            <p className="text-xs text-gray-500 mt-1">{description}</p>
+            <p className="text-xs text-gray-500 mt-1 truncate">{description}</p>
           </div>
-          <div className={`p-3 bg-gradient-to-br ${gradient} rounded-lg text-white`}>
+          <div className={`p-2 bg-gradient-to-br ${gradient} rounded-lg text-white flex-shrink-0 ml-2`}>
             {icon}
           </div>
         </div>

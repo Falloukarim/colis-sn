@@ -1,4 +1,3 @@
-// Service AfrikSMS pour l'envoi de SMS - Version finale basée sur la documentation
 interface AfrikSMSResponse {
   success: boolean;
   message_id?: string;
@@ -72,7 +71,7 @@ export class AfrikSMSService {
       console.log('🔗 URL complète:', url);
 
       const response = await fetch(url, {
-        method: 'GET', // ✅ Méthode GET comme dans l'exemple
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -246,5 +245,4 @@ private formatPhoneNumber(phone: string): string | null {
   }
 }
 
-// Instance singleton
 export const afrikSMSService = new AfrikSMSService();

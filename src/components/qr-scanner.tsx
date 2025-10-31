@@ -163,16 +163,18 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
     await resetScanner();
   };
 
-  // Scan réussi - CORRECTION IMPORTANTE ICI
+  // Scan réussi - CORRECTION IMPORTANTE : Toujours arrêter le scanner après scan
   const handleScanSuccess = async (decodedText: string) => {
     try {
       setScanResult(decodedText);
       
       const { success, error, commande } = await validateQRCode(decodedText);
       
+      // CORRECTION : Arrêter le scanner dans TOUS les cas
+      await stopScanner();
+      
       if (success && commande) {
-        // Arrêter le scanner et passer la commande au parent
-        await stopScanner();
+        // Passer la commande au parent
         onScanSuccess(commande);
         
         // Réinitialiser l'état pour la prochaine utilisation
@@ -183,29 +185,24 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
           onOpenChange(false);
         }, 300);
       } else {
-        // CORRECTION : Arrêter le scanner aussi en cas d'erreur
-        await stopScanner();
-        
+        // Afficher l'erreur
         toast({
           title: 'Erreur',
           description: error || 'Erreur de validation',
           variant: 'destructive',
         });
         
-        // Afficher l'erreur et permettre à l'utilisateur de redémarrer manuellement
         setError(error || 'Erreur de validation');
         
-        // NE PAS redémarrer automatiquement - laisser l'utilisateur décider
-        // L'utilisateur devra cliquer sur "Redémarrer" pour scanner à nouveau
+        // NE PAS redémarrer automatiquement
       }
     } catch (error) {
       console.error("Erreur:", error);
       
-      // Arrêter le scanner en cas d'erreur générale
+      // S'assurer que le scanner est arrêté même en cas d'erreur
       await stopScanner();
       setError("Échec de la validation");
       
-      // Afficher le toast d'erreur
       toast({
         title: 'Erreur',
         description: 'Une erreur est survenue lors de la validation',
@@ -334,8 +331,7 @@ export default function QRScanner({ open, onOpenChange, onScanSuccess }: QRScann
             )}
           </div>
 
-          {/* Boutons de contrôl++££££££££££%£££££££££££££££££££££££££££££££%£¨¨¨¨e */}
-          <div className="flex flex-col gap-3">¨£
+          <div className="flex flex-col gap-3">
             <div className="flex gap-3">
               <Button 
                 onClick={resetScanner} 

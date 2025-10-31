@@ -3,6 +3,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { sendSMS, sendWhatsApp } from '@/lib/utils/notification';
+import { isService } from '@/lib/utils/commande';
 
 async function getSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -69,13 +70,31 @@ export async function sendNotification(commandeId: string, type: 'sms' | 'whatsa
 
     if (!commande) throw new Error('Commande non trouvée');
 
-    // Calculer le montant total
-    const montantTotal = commande.poids && commande.prix_kg 
-      ? (commande.poids * commande.prix_kg).toFixed(2)
-      : '0.00';
+    // Déterminer si c'est un service
+    const isServiceCommande = isService(commande.description);
 
-    // Préparer le message
-    const message = `Votre commande est disponible. Poids: ${commande.poids}kg, Prix: ${commande.prix_kg}xof/kg, Total: ${montantTotal}xof. Présentez ce QR code pour retirer: ${process.env.NEXT_PUBLIC_APP_URL}/qr/${commande.id}`;
+    // Calculer le montant total selon le type
+    let montantTotal = '0';
+    if (isServiceCommande) {
+      // Pour les services: quantité × prix fixe
+      montantTotal = commande.quantite && commande.prix_kg 
+        ? (commande.quantite * commande.prix_kg).toFixed(0)
+        : '0';
+    } else {
+      // Pour les produits: poids × prix/kg
+      montantTotal = commande.poids && commande.prix_kg 
+        ? (commande.poids * commande.prix_kg).toFixed(0)
+        : '0';
+    }
+
+    // Préparer le message adapté au type
+    let message = '';
+    
+    if (isServiceCommande) {
+      message = `Bonjour, Votre commande ${commande.numero_commande} est prête pour le retrait. Service: ${commande.description}, Quantité: ${commande.quantite || 1}, Prix unitaire: ${commande.prix_kg || 0} XOF, Total: ${montantTotal} XOF. Présentez-vous avec votre QR code pour vérification: ${process.env.NEXT_PUBLIC_APP_URL}/qr/public/${commande.id}`;
+    } else {
+      message = `Bonjour, Votre commande ${commande.numero_commande} est prête pour le retrait. Produit: ${commande.description}, Poids: ${commande.poids || 0}kg, Prix: ${commande.prix_kg || 0} XOF/kg, Total: ${montantTotal} XOF. Présentez-vous avec votre QR code pour vérification: ${process.env.NEXT_PUBLIC_APP_URL}/qr/public/${commande.id}`;
+    }
 
     // Envoyer la notification selon le type
     let success = false;

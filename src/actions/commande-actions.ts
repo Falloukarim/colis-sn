@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { Commande } from '@/types/database.types';
 import { generateQRCode, saveQRCode } from '@/lib/utils/qr-code';
 import { sendSMS } from '@/lib/utils/notification';
+import { isService, generateCommandeSummary } from '@/lib/utils/commande';
 
 async function getSupabaseServerClient() {
   const cookieStore = cookies();
@@ -18,14 +19,42 @@ async function getSupabaseServerClient() {
         async getAll() {
           return (await cookieStore).getAll();
         },
-        // on ne définit pas setAll ni removeAll → supabase gère
       },
     }
   );
 }
 
+// Fonction améliorée pour générer un numéro de commande unique
+async function generateUniqueNumeroCommande(): Promise<string> {
+  const supabase = await getSupabaseServerClient();
+  
+  // Générer un numéro basé sur la date et un timestamp
+  const now = new Date();
+  const datePart = now.toISOString().slice(2, 10).replace(/-/g, '');
+  const timePart = now.getTime().toString().slice(-6);
+  
+  // Ajouter un random pour plus d'unicité
+  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+  
+  const numeroCommande = `SN-${datePart}-${timePart}-${randomPart}`;
+  
+  // Vérifier si ce numéro existe déjà (très improbable mais on vérifie)
+  const { data: existing } = await supabase
+    .from('commandes')
+    .select('id')
+    .eq('numero_commande', numeroCommande)
+    .single();
+  
+  // Si par extraordinaire il existe, on régénère
+  if (existing) {
+    return generateUniqueNumeroCommande();
+  }
+  
+  return numeroCommande;
+}
 
-async function generateNumeroCommande(clientId: string): Promise<string> {
+// Fonction alternative basée sur le client (moins risquée pour les créations multiples)
+async function generateClientBasedNumeroCommande(clientId: string): Promise<string> {
   const supabase = await getSupabaseServerClient();
   
   // Récupérer les infos du client
@@ -36,7 +65,8 @@ async function generateNumeroCommande(clientId: string): Promise<string> {
     .single();
   
   if (error || !client) {
-    throw new Error('Client non trouvé pour générer le numéro de commande');
+    // Fallback à la méthode unique si client non trouvé
+    return generateUniqueNumeroCommande();
   }
   
   // Formater le nom (premières lettres en majuscules)
@@ -50,31 +80,10 @@ async function generateNumeroCommande(clientId: string): Promise<string> {
   // Formater le téléphone (derniers 4 chiffres)
   const telFormate = client.telephone.replace(/\D/g, '').slice(-4);
   
-  // Récupérer le nombre de commandes existantes pour ce client
-  const { count } = await supabase
-    .from('commandes')
-    .select('*', { count: 'exact' })
-    .eq('client_id', clientId);
+  // Utiliser le timestamp pour l'unicité
+  const timestamp = Date.now().toString().slice(-4);
   
-  const sequence = (count || 0) + 1;
-  
-  return `SN-${nomFormate}-${telFormate}-${sequence.toString().padStart(3, '0')}`;
-}
-
-// Fonction alternative séquentielle simple
-async function generateSequentialNumeroCommande(): Promise<string> {
-  const supabase = await getSupabaseServerClient();
-  
-  // Compter le nombre total de commandes
-  const { count } = await supabase
-    .from('commandes')
-    .select('*', { count: 'exact' });
-  
-  const now = new Date();
-  const datePart = now.toISOString().slice(2, 10).replace(/-/g, '');
-  const sequence = (count || 0) + 1;
-  
-  return `SN-${datePart}-${sequence.toString().padStart(4, '0')}`;
+  return `SN-${nomFormate}-${telFormate}-${timestamp}`;
 }
 
 function handleSupabaseError(error: any): { message: string; code?: string } {
@@ -96,8 +105,6 @@ function handleSupabaseError(error: any): { message: string; code?: string } {
     message: 'Une erreur inattendue est survenue' 
   };
 }
-
-
 
 export async function createCommande(formData: FormData): Promise<{ success: boolean; error?: string; commandeId?: string }> {
   try {
@@ -128,18 +135,45 @@ export async function createCommande(formData: FormData): Promise<{ success: boo
 
     const clientId = formData.get('client_id') as string;
     
-    // Générer le numéro de commande professionnel
-    const numeroCommande = await generateNumeroCommande(clientId);
+    // Générer un numéro de commande unique avec timestamp
+    const numeroCommande = await generateUniqueNumeroCommande();
 
-    const commandeData = {
+    // Préparer les données de base
+    const commandeData: any = {
       organization_id: userData.organization_id,
       client_id: clientId,
-      numero_commande: numeroCommande, // Utiliser le nouveau format
+      numero_commande: numeroCommande,
       description: formData.get('description') as string || null,
       date_reception: formData.get('date_reception') as string || null,
       date_livraison_prevue: formData.get('date_livraison_prevue') as string || null,
       statut: 'en_cours' as const,
     };
+
+    // Ajouter les champs spécifiques selon le type
+    const type = formData.get('type') as 'produit' | 'service' | null;
+    
+   // Dans createCommande, modifiez cette partie :
+
+if (type === 'service') {
+  // Pour les services, utiliser quantité et prix_kg
+  const quantite = formData.get('quantite') as string;
+  const prixKg = formData.get('prix_kg') as string;
+  
+  if (quantite && prixKg) {
+    commandeData.quantite = parseInt(quantite);
+    commandeData.prix_kg = parseFloat(prixKg);
+    // NE PAS inclure montant_total - il sera calculé automatiquement
+  }
+} else {
+  // Pour les produits, utiliser poids et prix_kg
+  const poids = formData.get('poids') as string;
+  const prixKg = formData.get('prix_kg') as string;
+  
+  if (poids && prixKg) {
+    commandeData.poids = parseFloat(poids);
+    commandeData.prix_kg = parseFloat(prixKg);
+  }
+}
 
     const { data: commande, error } = await supabase
       .from('commandes')
@@ -147,7 +181,10 @@ export async function createCommande(formData: FormData): Promise<{ success: boo
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
 
     // Générer le QR code
     const qrCodeData = await generateQRCode(commande.id);
@@ -165,6 +202,119 @@ export async function createCommande(formData: FormData): Promise<{ success: boo
     return { success: true, commandeId: commande.id };
   } catch (error) {
     console.error('Error creating commande:', error);
+    const errorDetails = handleSupabaseError(error);
+    return { success: false, error: errorDetails.message };
+  }
+}
+
+// Nouvelle fonction pour créer plusieurs commandes en une seule transaction
+export async function createMultipleCommandes(
+  clientIds: string[], 
+  formData: FormData
+): Promise<{ success: boolean; error?: string; createdCount?: number }> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Non autorisé');
+
+    // Récupérer l'organization_id
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('organization_id')
+      .eq('id', user.id)
+      .single();
+
+    if (userError) throw userError;
+    if (!userData) throw new Error('Utilisateur non trouvé');
+
+    // Vérifier le statut de l'abonnement
+    const { data: organization } = await supabase
+      .from('organizations')
+      .select('subscription_status')
+      .eq('id', userData.organization_id)
+      .single();
+
+    if (organization?.subscription_status !== 'active') {
+      throw new Error('Abonnement de l\'organisation non actif');
+    }
+
+    const description = formData.get('description') as string;
+    const date_reception = formData.get('date_reception') as string;
+    const date_livraison_prevue = formData.get('date_livraison_prevue') as string;
+    const type = formData.get('type') as 'produit' | 'service';
+
+    // Préparer toutes les commandes
+   const commandesData = await Promise.all(
+  clientIds.map(async (clientId) => {
+    const numeroCommande = await generateUniqueNumeroCommande();
+    
+    const commandeData: any = {
+      organization_id: userData.organization_id,
+      client_id: clientId,
+      numero_commande: numeroCommande,
+      description,
+      date_reception,
+      date_livraison_prevue: date_livraison_prevue || null,
+      statut: 'en_cours' as const,
+    };
+
+    // TOUJOURS ajouter le prix, même si le poids/quantité n'est pas fourni
+    const prixKg = formData.get('prix_kg') as string;
+    if (prixKg) {
+      commandeData.prix_kg = parseFloat(prixKg);
+    }
+
+    // Ajouter les champs spécifiques selon le type (optionnels à la création)
+    if (type === 'service') {
+  const quantite = formData.get('quantite') as string;
+  if (quantite) {
+    commandeData.quantite = parseInt(quantite);
+    // NE PAS calculer montant_total ici
+  }
+} else {
+  const poids = formData.get('poids') as string;
+  if (poids) {
+    commandeData.poids = parseFloat(poids);
+  }
+}
+
+    return commandeData;
+  })
+);
+
+    // Insérer toutes les commandes en une seule fois
+    const { data: commandes, error } = await supabase
+      .from('commandes')
+      .insert(commandesData)
+      .select();
+
+    if (error) {
+      console.error('Supabase error creating multiple commandes:', error);
+      throw error;
+    }
+
+    // Générer les QR codes pour chaque commande
+    if (commandes) {
+      await Promise.all(
+        commandes.map(async (commande) => {
+          const qrCodeData = await generateQRCode(commande.id);
+          await supabase
+            .from('commandes')
+            .update({ qr_code: qrCodeData })
+            .eq('id', commande.id);
+        })
+      );
+    }
+
+    revalidatePath('/dashboard/commandes');
+    revalidatePath('/dashboard');
+    
+    return { 
+      success: true, 
+      createdCount: commandes?.length || 0 
+    };
+  } catch (error) {
+    console.error('Error creating multiple commandes:', error);
     const errorDetails = handleSupabaseError(error);
     return { success: false, error: errorDetails.message };
   }
@@ -194,7 +344,7 @@ export async function getDefaultPrixKg() {
       .eq('is_default', true)
       .single();
 
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows found
+    if (error && error.code !== 'PGRST116') throw error; 
 
     return { success: true, prix: prix || null };
   } catch (error) {
@@ -203,13 +353,19 @@ export async function getDefaultPrixKg() {
   }
 }
 
-export async function updateCommandeStatus(commandeId: string, newStatus: Commande['statut'], poids?: number, prixKg?: number): Promise<{ success: boolean; error?: string }> {
+
+export async function updateCommandeStatus(
+  commandeId: string, 
+  newStatus: Commande['statut'], 
+  quantite?: number, 
+  prixKg?: number
+): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = await getSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Non autorisé');
 
-    // Récupérer l'organization_id depuis la table users
+    // Récupérer l'organization_id et les détails de la commande
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('organization_id')
@@ -219,11 +375,34 @@ export async function updateCommandeStatus(commandeId: string, newStatus: Comman
     if (userError) throw userError;
     if (!userData) throw new Error('Utilisateur non trouvé');
 
+    // Récupérer la commande pour vérifier si c'est un service
+    const { data: commande, error: commandeError } = await supabase
+      .from('commandes')
+      .select('description, statut')
+      .eq('id', commandeId)
+      .single();
+
+    if (commandeError) throw commandeError;
+
     const updateData: any = { statut: newStatus };
     
-    if (poids !== undefined && prixKg !== undefined) {
-      updateData.poids = poids;
-      updateData.prix_kg = prixKg;
+    // Vérifier si c'est un service
+    const isServiceCommande = isService(commande?.description);
+    
+    if (isServiceCommande) {
+      // Pour les services, utiliser la quantité et le prix fixe
+      if (quantite !== undefined && prixKg !== undefined) {
+        updateData.quantite = quantite;
+        updateData.prix_kg = prixKg;
+        // NE PAS inclure montant_total - il sera calculé automatiquement
+      }
+    } else {
+      // Pour les produits normaux, garder la logique existante
+      if (quantite !== undefined && prixKg !== undefined) {
+        updateData.poids = quantite; // Ici quantite représente le poids
+        updateData.prix_kg = prixKg;
+        // NE PAS inclure montant_total - il sera calculé automatiquement
+      }
     }
 
     if (newStatus === 'remis') {
@@ -240,8 +419,8 @@ export async function updateCommandeStatus(commandeId: string, newStatus: Comman
 
     // Si la commande devient disponible, envoyer une notification
     if (newStatus === 'disponible') {
-  await sendCommandeNotification(supabase, commandeId, userData.organization_id);
-}
+      await sendCommandeNotification(supabase, commandeId, userData.organization_id);
+    }
 
     revalidatePath('/dashboard/commandes');
     revalidatePath(`/dashboard/commandes/${commandeId}`);
@@ -331,13 +510,11 @@ export async function getCommandeById(commandeId: string): Promise<{ commande: C
 }
 
 async function sendCommandeNotification(
-  supabase: any, // ← Ajoutez ce paramètre
+  supabase: any, 
   commandeId: string, 
   organizationId: string
 ): Promise<void> {
   try {
-    // Supprimez cette ligne : const supabase = await getSupabaseServerClient();
-
     // Récupérer les détails de la commande et du client
     const { data: commande, error: commandeError } = await supabase
       .from('commandes')
@@ -359,24 +536,23 @@ async function sendCommandeNotification(
       return;
     }
 
-    // Calculer le montant total
-    const montantTotal = commande.poids && commande.prix_kg 
-      ? (commande.poids * commande.prix_kg).toFixed(2)
-      : '0.00';
+    // Générer le message de notification
+    const { message } = generateCommandeSummary(commande);
 
-    // Préparer le message
-const message = `Votre commande est disponible. Poids: ${commande.poids}kg, Prix: ${commande.prix_kg}xof/kg, Total: ${montantTotal}xof. Présentez ce QR code pour retirer: ${process.env.NEXT_PUBLIC_APP_URL}/qr/public/${commande.id}`;
+    // Ajouter l'URL du QR code
+    const fullMessage = `${message} Présentez ce QR code lors du retrait : ${process.env.NEXT_PUBLIC_APP_URL}/qr/public/${commande.id}`;
+
     // Envoyer la notification
     let notificationSent = false;
     let notificationType: 'sms' | 'email' = 'email';
     
     if (commande.clients?.whatsapp) {
-      notificationSent = await sendSMS(commande.clients.whatsapp, message);
+      notificationSent = await sendSMS(commande.clients.whatsapp, fullMessage);
       notificationType = 'sms';
     }
     
     if (!notificationSent && commande.clients?.telephone) {
-      notificationSent = await sendSMS(commande.clients.telephone, message);
+      notificationSent = await sendSMS(commande.clients.telephone, fullMessage);
       notificationType = 'sms';
     }
 
@@ -387,7 +563,7 @@ const message = `Votre commande est disponible. Poids: ${commande.poids}kg, Prix
         commande_id: commandeId,
         type: notificationType,
         status: notificationSent ? 'sent' : 'failed',
-        message: message
+        message: fullMessage
       }]);
 
     if (notificationError) {

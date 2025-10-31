@@ -1,5 +1,6 @@
 import { sendSMSMock, sendWhatsAppMock, validatePhoneNumber } from './notification-mock';
-import { afrikSMSService } from '@/lib/services/afriksms'; // ✅ Cette importation devrait maintenant fonctionner
+import { afrikSMSService } from '@/lib/services/afriksms';
+import { isService } from './commande';
 
 // Configuration pour basculer entre mock et AfrikSMS réel
 const USE_MOCK_SERVICES = process.env.USE_MOCK_NOTIFICATIONS === 'true' || !process.env.AFRIKSMS_API_KEY;
@@ -63,11 +64,26 @@ export async function getSMSBalance() {
   return await afrikSMSService.getBalance();
 }
 
-// Fonction utilitaire pour formater les messages de commande
+// Fonction utilitaire pour formater les messages de commande (adaptée pour services/produits)
 export function formatCommandeMessage(commande: any): string {
-  const montantTotal = commande.poids && commande.prix_kg 
-    ? (commande.poids * commande.prix_kg).toFixed(0)
-    : '0';
+  const isServiceCommande = isService(commande.description);
+  
+  let montantTotal = '0';
+  let details = '';
 
-  return `Bonjour, votre commande ${commande.numero_commande} est disponible. Poids: ${commande.poids}kg, Prix: ${commande.prix_kg}xof/kg, Total: ${montantTotal}xof. Présentez ce QR code pour retirer: ${process.env.NEXT_PUBLIC_APP_URL}/qr/public/${commande.id}`;
+  if (isServiceCommande) {
+    // Pour les services: quantité × prix fixe
+    montantTotal = commande.quantite && commande.prix_kg 
+      ? (commande.quantite * commande.prix_kg).toFixed(0)
+      : '0';
+    details = `Service: ${commande.description}, Quantité: ${commande.quantite || 1}, Prix unitaire: ${commande.prix_kg || 0} XOF`;
+  } else {
+    // Pour les produits: poids × prix/kg
+    montantTotal = commande.poids && commande.prix_kg 
+      ? (commande.poids * commande.prix_kg).toFixed(0)
+      : '0';
+    details = `Produit: ${commande.description}, Poids: ${commande.poids || 0}kg, Prix: ${commande.prix_kg || 0} XOF/kg`;
+  }
+
+  return `Bonjour, Votre commande ${commande.numero_commande} est prête pour le retrait. ${details}, Total: ${montantTotal} XOF. Présentez-vous avec votre QR code pour vérification: ${process.env.NEXT_PUBLIC_APP_URL}/qr/public/${commande.id}`;
 }
